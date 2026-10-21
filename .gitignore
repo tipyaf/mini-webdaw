@@ -5,3 +5,5 @@
 *.wav
 *.7z
 mp3/
+lab/data/
+.claude/
