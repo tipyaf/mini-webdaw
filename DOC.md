@@ -170,19 +170,19 @@ En conteneur, le CDN est inaccessible : intercepter `cdn.jsdelivr.net` avec `pag
 
 ---
 
-## 7. Piste suivante étudiée (non implémentée) : séparation automatique
+## 7. Nouveau morceau : import, séparation, bibliothèque (oct. 2026)
 
-Objectif : importer un morceau mixé et laisser le lecteur produire les pistes.
+Bouton **Nouveau morceau** : un morceau devient 6 pistes (Chant, Guitare, Basse, Batteries, Piano, Autre), séparées **dans le navigateur**, puis rangées dans une bibliothèque locale.
 
-- Modèle : **Demucs** (Meta, MIT). Variante `htdemucs_6s` = 6 pistes (drums, bass, vocals, guitar, piano, other) → même découpage que les dossiers actuels. Guitare et piano nettement moins propres que voix / batterie / basse.
-- Exécution navigateur : ONNX Runtime Web (jsDelivr) + WebGPU ; modèles servis par Hugging Face (`https://huggingface.co/<repo>/resolve/main/<fichier>`, CORS ok), à mettre en cache (Cache API) après le premier téléchargement.
-  - `kramp/htdemucs-6s-webgpu-onnx` — 6 pistes, entrée fixe `[1, 2, 343980]` (~7,8 s à 44,1 kHz), sortie `[1, 6, 2, 343980]`. Démo : `huggingface.co/spaces/kramp/audio-split`.
-  - `monteslu/htdemucs-web-onnx` — 4 pistes, fp16 ≈ 126 Mo en 21 morceaux ONNX + manifeste ; annoncé 8–22× temps réel sur Radeon RX 7600 (non vérifié).
-  - Dépôts communautaires, pas officiels : prévoir une copie locale possible.
-- Recommandation retenue en discussion : **séparer sur l'ordinateur** (dans le navigateur desktop ou via un script Python Demucs qui écrit dans `mp3/<chanson>/`), la tablette ne fait que lire.
-- Prochaine étape proposée : essai sur une chanson pour mesurer temps et qualité réels avant toute modification du lecteur.
+- **Sources** : recherche YouTube et lien YouTube (via un relais privé), ou fichier audio (MP3, M4A, WAV, WebM, FLAC).
+- **Relais** : son adresse n'est pas dans ce dépôt. Elle arrive par un lien d'invitation `…/mini-webdaw/#relais=<adresse>&cle=<clé>` (gardé en favori ; la partie après `#` n'est jamais envoyée à GitHub), mémorisée dans `localStorage`. Accès : clé du lien → vérification Cloudflare Turnstile invisible → session d'1 h. Sans relais, seul l'onglet Fichier est proposé.
+- **Séparation** : Demucs htdemucs_6s (Meta, MIT) en ONNX (`kramp/htdemucs-6s-webgpu-onnx`, 285 Mo, mis en cache après le premier téléchargement), ONNX Runtime Web 1.27 sur **WebGPU**, dans un worker. Tranches de 7,8 s avec 25 % de recouvrement (méthode de l'espace Hugging Face kramp/audio-split, MIT). Sans WebGPU : message « Cet appareil ne peut pas séparer ce morceau ».
+- **Bibliothèque** : IndexedDB (`mini-webdaw` : `songs` pour les métadonnées, `stems` pour les pistes). Pistes en **Opus 160 kb/s** (WebCodecs, conteneur Ogg écrit à la main), ou WAV 16 bits si le navigateur ne sait pas encoder puis relire l'Opus. Niveau RMS de chaque piste gardé (`rmsDb`).
+- **Déroulé** : un import à la fois (file d'attente), progression par étape (audio, modèle, tranche N/M + temps restant, rangement), Annuler, écran maintenu allumé (Wake Lock). Ouverture automatique à la fin, sauf si un autre morceau joue (notification).
 
----
+Mesures (M3 Pro, Chrome, 21-22 oct. 2026) : morceau de 2 min 42 importé en ~1 min 10 ; 6 pistes Opus = 18,7 Mo ; réouverture après rechargement en 0,45 s.
+
+Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides repliées, vue compacte téléphone, secours serveur sans WebGPU.
 
 ## 8. Repères dans le code (`index.html`)
 
@@ -192,6 +192,12 @@ Objectif : importer un morceau mixé et laisser le lecteur produire les pistes.
 | Chaîne audio | `audioCtx`, `initLimiter`, `LIMITER_CODE`, `fadeIn`, `fadeOut` |
 | Chargement | `$('#dir').onchange`, `loadSong`, `trackLabel`, `rank` |
 | Rendu | `renderSong`, `renderSongList`, `drawWaves`, `computePeaks`, `drawRuler`, `tick` |
+| Relais | `parseInvite`, `setRelay`, `relayCall`, `ensureSession`, `turnstileToken`, `checkRelay` |
+| Séparation | `#sepWorker` (worker), `separate`, `decode44k`, `webgpuOk` |
+| Encodage | `pickEncoder`, `encodeStem`, `encodeOpus48`, `oggOpus`, `oggPage`, `toWav` |
+| Bibliothèque | `library`, `idb`, `libraryFiles`, `deleteLibrarySong` |
+| Imports | `enqueue`, `runJobs`, `runJob`, `downloadAudio`, `cancelJob` |
+| Panneau | `openPanel`, `renderPanel`, `runSearch`, `runInfo`, `renderResults`, `renderJobs`, `renderFooter` |
 | Mixage | `applyMix`, `toggleSolo`, `resetMix`, `dbToGain`, `fmtDb` |
 | Transport | `play`, `playStretch`, `startSource`, `scheduleLoop`, `stopAll`, `pause`, `seek`, `position` |
 | Boucle | `setMarker`, `toggleLoop`, `loopValid`, `updateLoopUI` |

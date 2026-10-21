@@ -85,12 +85,73 @@
   .status { padding: 30px 20px; color: var(--muted); }
   .keys { color: var(--muted); font-size: 12px; padding: 0 20px 20px; }
   kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+  .srcTag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .song .pct { float: right; color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .song.job small { color: var(--accent); }
+  .song.job.err small { color: var(--mute); }
+  .lib { position: relative; }
+  .lib .song { padding-right: 34px; }
+  .lib .del { position: absolute; right: 6px; top: 9px; background: none; border: 0; color: var(--muted); padding: 2px 6px; border-radius: 6px; opacity: 0; }
+  .lib:hover .del, .lib .del:focus { opacity: 1; }
+  .lib .del:hover { background: var(--bg); color: var(--text); }
+  .confirm { padding: 9px 10px; border-radius: 8px; background: var(--panel2); margin-bottom: 2px; display: grid; gap: 8px; font-size: 13px; }
+  .confirm div { display: flex; gap: 6px; }
+  /* Panneau « Nouveau morceau » : au-dessus du lecteur sur ordinateur, plein écran sur téléphone */
+  .panel { position: fixed; z-index: 20; top: 64px; left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 32px));
+    max-height: calc(100vh - 84px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55); padding: 16px; display: grid; gap: 14px; align-content: start; grid-auto-rows: max-content; }
+  .panel[hidden] { display: none; }
+  .phead { display: flex; align-items: center; gap: 10px; }
+  .phead h2 { margin: 0; font-size: 16px; flex: 1; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { background: none; border: 0; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .pbody { display: grid; gap: 10px; }
+  .field { display: flex; gap: 8px; }
+  .field input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font: inherit; }
+  .field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .note { color: var(--muted); font-size: 13px; margin: 0; }
+  .note.err { color: var(--mute); }
+  .results { display: grid; gap: 8px; }
+  .card { display: grid; grid-template-columns: 120px 1fr auto; gap: 12px; align-items: center; background: var(--panel2); border-radius: 10px; padding: 8px; }
+  .card img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #000; display: block; }
+  .card .meta { min-width: 0; }
+  .card .meta b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; }
+  .card .meta small { color: var(--muted); }
+  .card .acts { display: flex; gap: 6px; }
+  .card iframe { grid-column: 1 / -1; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+  .drop.over { border-color: var(--accent); color: var(--text); }
+  .job { background: var(--panel2); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+  .job .jt { display: flex; gap: 10px; align-items: center; }
+  .job .jt b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+  .steps li { display: flex; gap: 8px; color: var(--muted); }
+  .steps li.cur { color: var(--text); }
+  .steps li.done { color: #4fd1a5; }
+  .steps li i { width: 14px; text-align: center; font-style: normal; flex: none; }
+  .bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  .pfoot { color: var(--muted); font-size: 12px; display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .pfoot p { margin: 0; }
+  .pfoot a, .pfoot button.link { color: var(--muted); }
+  button.link { background: none; border: 0; padding: 0; text-decoration: underline; font-size: inherit; }
+  .toast { position: fixed; z-index: 30; bottom: 20px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px);
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; gap: 12px; align-items: center; }
+  #ts { position: fixed; width: 0; height: 0; overflow: hidden; }
   @media (max-width: 760px) {
     :root { --ctrl-w: 200px; }
     .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 30vh; }
     .ctrl input[type=range] { display: none; }
+    header { flex-wrap: wrap; gap: 8px 12px; }
     header .hint { display: none; }
+    .panel { inset: 0; transform: none; width: auto; max-height: none; border-radius: 0; border: 0; }
+    .card { grid-template-columns: 96px 1fr; }
+    .card img { width: 96px; }
+    .card .acts { grid-column: 1 / -1; }
   }
 </style>
 </head>
@@ -98,22 +159,31 @@
 <div class="app">
   <header>
     <h1>mini webdaw</h1>
-    <button class="btn primary" id="pick">Choisir le dossier mp3…</button>
+    <button class="btn primary" id="newSong">Nouveau morceau</button>
+    <button class="btn" id="pick">Choisir le dossier mp3…</button>
     <input type="file" id="dir" webkitdirectory directory multiple hidden>
-    <span class="hint">Sélectionne le dossier « mp3 » (ou le dossier parent)</span>
+    <span class="hint">Un morceau devient 6 pistes : chant, guitare, basse, batterie, piano, autre</span>
   </header>
   <aside>
-    <h2>Chansons</h2>
     <div id="songs"></div>
   </aside>
   <main id="main">
     <div class="empty">
-      <h2>Aucun dossier chargé</h2>
-      <p>Choisis le dossier qui contient un sous-dossier par chanson. Chaque fichier devient une piste avec mute, solo et volume.</p>
-      <button class="btn primary" onclick="document.getElementById('dir').click()">Choisir le dossier mp3…</button>
+      <h2>Aucun morceau ouvert</h2>
+      <p>Importe un morceau (recherche YouTube ou fichier audio) : il est séparé en pistes dans ce navigateur. Ou choisis un dossier qui contient un sous-dossier de pistes MP3 par chanson.</p>
+      <button class="btn primary" onclick="openPanel()">Nouveau morceau</button>
     </div>
   </main>
 </div>
+
+<section class="panel" id="panel" hidden aria-label="Nouveau morceau">
+  <div class="phead"><h2>Nouveau morceau</h2><button class="btn" id="pClose">Fermer</button></div>
+  <div id="pJobs"></div>
+  <div class="tabs" id="pTabs" role="tablist"></div>
+  <div class="pbody" id="pBody"></div>
+  <div class="pfoot" id="pFoot"></div>
+</section>
+<div id="ts"></div>
 
 <!-- Signalsmith Stretch (MIT) : transposition sans changer le tempo -->
 <script async id="stretchLib" src="https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.js"></script>
@@ -127,7 +197,7 @@ const FALLBACK = ['#ff9f5a', '#63e6be', '#d0a2ff', '#ffd166', '#7aa2ff'];
 const $ = s => document.querySelector(s);
 let ctx, master;
 let songs = new Map();       // nom du dossier -> [File]
-let cur = null;              // chanson chargée
+let cur = null;              // chanson chargée ; cur.key = « d:<dossier> » ou « l:<id bibliothèque> »
 let playing = false, startAt = 0, offset = 0, sources = [];
 let loop = { a: null, b: null, on: false };
 let loadToken = 0;
@@ -260,7 +330,7 @@ $('#dir').onchange = e => {
   }
   songs = new Map([...songs].sort((a, b) => a[0].localeCompare(b[0], 'fr', { sensitivity: 'base' })));
   renderSongList();
-  if (songs.size) loadSong([...songs.keys()][0]);
+  if (songs.size) loadSong('d:' + [...songs.keys()][0]);
   else $('#main').innerHTML = '<div class="empty"><h2>Aucun fichier audio trouvé</h2><p>Vérifie que tu as choisi le dossier « mp3 ».</p></div>';
   e.target.value = '';
 };
@@ -268,11 +338,37 @@ $('#dir').onchange = e => {
 function renderSongList() {
   const box = $('#songs');
   box.innerHTML = '';
+  const heading = text => { const h = document.createElement('h2'); h.textContent = text; box.appendChild(h); };
+  const pending = jobs.filter(j => j.state !== 'done');
+  if (pending.length || library.length) heading('Bibliothèque');
+  for (const j of pending) {
+    const b = document.createElement('button');
+    b.className = 'song job' + (j.state === 'error' ? ' err' : '');
+    b.innerHTML = `${j.state === 'running' ? `<span class="pct">${j.pct} %</span>` : ''}${esc(j.title)}<small>${esc(jobLabel(j))}</small>`;
+    b.onclick = openPanel;
+    box.appendChild(b);
+  }
+  for (const m of library) {
+    const key = 'l:' + m.id;
+    const row = document.createElement('div');
+    row.className = 'lib';
+    if (confirmDelete === m.id) {
+      row.innerHTML = `<div class="confirm">Supprimer « ${esc(m.title)} » ?<div><button class="btn" data-a="yes">Supprimer</button><button class="btn" data-a="no">Annuler</button></div></div>`;
+      row.querySelector('[data-a=yes]').onclick = () => deleteLibrarySong(m.id);
+      row.querySelector('[data-a=no]').onclick = () => { confirmDelete = null; renderSongList(); };
+    } else {
+      row.innerHTML = `<button class="song${cur && cur.key === key ? ' active' : ''}">${esc(m.title)}<small>${esc(SOURCE_LABEL[m.source] || '')} · ${fmt(m.duration || 0)}</small></button><button class="del" title="Supprimer" aria-label="Supprimer ${esc(m.title)}">✕</button>`;
+      row.querySelector('.song').onclick = () => loadSong(key);
+      row.querySelector('.del').onclick = () => { confirmDelete = m.id; renderSongList(); };
+    }
+    box.appendChild(row);
+  }
+  if (songs.size) heading('Dossier');
   for (const [name, files] of songs) {
     const b = document.createElement('button');
-    b.className = 'song' + (cur && cur.name === name ? ' active' : '');
+    b.className = 'song' + (cur && cur.key === 'd:' + name ? ' active' : '');
     b.innerHTML = `${esc(name)}<small>${files.length} piste${files.length > 1 ? 's' : ''}</small>`;
-    b.onclick = () => loadSong(name);
+    b.onclick = () => loadSong('d:' + name);
     box.appendChild(b);
   }
 }
@@ -283,21 +379,25 @@ function trackLabel(file) {
   return m ? m[1].trim() : base;
 }
 
-async function loadSong(name) {
+async function loadSong(key) {
   const token = ++loadToken;
   stopAll();
   playing = false;
   if (cur) releaseStretch(cur);
   offset = 0;
   loop = { a: null, b: null, on: false };
-  semis = semisBySong.get(name) || 0;
-  cur = { name, tracks: [], duration: 0 };
+  semis = semisBySong.get(key) || 0;
+  const meta = key.startsWith('l:') ? library.find(m => 'l:' + m.id === key) : null;
+  const name = meta ? meta.title : key.slice(2);
+  cur = { key, name, source: meta ? meta.source : null, tracks: [], duration: 0 };
   renderSongList();
   $('#main').innerHTML = `<div class="status">Chargement de « ${esc(name)} »…</div>`;
   const ac = audioCtx();
   await limiterReady;
-  const files = [...songs.get(name)].sort((a, b) => rank(trackLabel(a)) - rank(trackLabel(b)) || a.name.localeCompare(b.name));
   try {
+    const all = meta ? await libraryFiles(meta) : songs.get(name);
+    if (token !== loadToken) return;
+    const files = [...all].sort((a, b) => rank(trackLabel(a)) - rank(trackLabel(b)) || a.name.localeCompare(b.name));
     const buffers = await Promise.all(files.map(async f => ac.decodeAudioData(await f.arrayBuffer())));
     if (token !== loadToken) return;
     let fb = 0;
@@ -325,6 +425,7 @@ function renderSong() {
   $('#main').innerHTML = `
     <div class="transport">
       <span class="title">${esc(cur.name)}</span>
+      ${cur.source ? `<span class="srcTag">Source : ${esc(SOURCE_LABEL[cur.source])}</span>` : ''}
       <button class="play" id="playBtn" title="Lecture / pause (Espace)"></button>
       <button class="btn" id="stopBtn" title="Retour au début (Entrée)">⏮</button>
       <span class="time" id="time"></span>
@@ -547,7 +648,7 @@ async function setSemis(v) {
   if (v === semis) return;
   const prev = semis;
   semis = v;
-  semisBySong.set(cur.name, v);
+  semisBySong.set(cur.key, v);
   updatePitchUI();
   if (!playing && !starting) { if (v !== 0) prepareStretch().catch(() => {}); return; }
   if (playing && prev !== 0 && v !== 0) {
@@ -746,6 +847,771 @@ window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(draw
 
 function fmt(s) { s = Math.max(0, s); const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+</script>
+
+<!-- Worker de séparation : Demucs htdemucs_6s (Meta, MIT) en ONNX sur WebGPU.
+     Découpage en tranches et fenêtre de recouvrement repris de l'espace Hugging Face kramp/audio-split (MIT). -->
+<script id="sepWorker" type="text/plain">
+const ORT_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
+const MODEL_URL = 'https://huggingface.co/kramp/htdemucs-6s-webgpu-onnx/resolve/main/htdemucs_6s.onnx';
+const MODEL_CACHE = 'htdemucs6s-model-v1';
+const MODEL_SIZE = 284797240;
+const N = 343980;                 // 7,8 s à 44,1 kHz : entrée fixe du modèle
+const OVERLAP = Math.floor(N / 4);
+const STRIDE = N - OVERLAP;
+const post = (m, t) => self.postMessage(m, t || []);
+let ort = null, session = null;
+
+async function getModel() {
+  let cache = null;
+  try {
+    cache = await caches.open(MODEL_CACHE);
+    const hit = await cache.match(MODEL_URL);
+    if (hit) { post({ type: 'model', cached: true }); return hit.arrayBuffer(); }
+  } catch (e) { cache = null; }
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) throw new Error('Téléchargement du modèle : HTTP ' + res.status);
+  const total = Number(res.headers.get('content-length')) || MODEL_SIZE;
+  const reader = res.body.getReader();
+  const bytes = new Uint8Array(total);
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes.set(value, loaded);
+    loaded += value.length;
+    post({ type: 'model', loaded, total });
+  }
+  const buf = bytes.buffer.slice(0, loaded);
+  if (cache) { try { await cache.put(MODEL_URL, new Response(buf.slice(0))); } catch (e) {} }
+  return buf;
+}
+
+async function getSession() {
+  if (session) { post({ type: 'model', cached: true }); return session; }
+  if (!ort) {
+    ort = await import(ORT_BASE + 'ort.webgpu.bundle.min.mjs');
+    ort.env.wasm.wasmPaths = ORT_BASE;
+    ort.env.wasm.numThreads = 1;
+  }
+  const buf = await getModel();
+  session = await ort.InferenceSession.create(buf, { graphOptimizationLevel: 'disabled', executionProviders: ['webgpu'] });
+  return session;
+}
+
+function makeWindow() {
+  const w = new Float32Array(N), d = OVERLAP - 1;
+  for (let i = 0; i < N; i++) w[i] = i < OVERLAP ? i / d : i >= N - OVERLAP ? (N - 1 - i) / d : 1;
+  return w;
+}
+
+self.onmessage = async (e) => {
+  const { left, right } = e.data;
+  try {
+    const s = await getSession();
+    const total = left.length;
+    const nSeg = Math.max(1, Math.ceil((total - N) / STRIDE) + 1);
+    const win = makeWindow();
+    const out = Array.from({ length: 6 }, () => [new Float32Array(total), new Float32Array(total)]);
+    const weights = new Float32Array(total);
+    let seg = 0;
+    post({ type: 'progress', seg: 0, nSeg, ms: 0 });
+    for (let start = 0; start < total; start += STRIDE) {
+      const clen = Math.min(N, total - start);
+      const x = new Float32Array(2 * N);
+      x.set(left.subarray(start, start + clen), 0);
+      x.set(right.subarray(start, start + clen), N);
+      const t0 = performance.now();
+      const r = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', x, [1, 2, N]) });
+      const y = r[s.outputNames[0]].data;
+      for (let k = 0; k < 6; k++) for (let c = 0; c < 2; c++) {
+        const base = (k * 2 + c) * N, dst = out[k][c];
+        for (let i = 0; i < clen; i++) dst[start + i] += y[base + i] * win[i];
+      }
+      for (let i = 0; i < clen; i++) weights[start + i] += win[i];
+      post({ type: 'progress', seg: ++seg, nSeg, ms: performance.now() - t0 });
+      if (start + N >= total) break;
+    }
+    for (const st of out) for (const ch of st) for (let i = 0; i < total; i++) if (weights[i] > 1e-8) ch[i] /= weights[i];
+    post({ type: 'result', stems: out }, out.flat().map(a => a.buffer));
+  } catch (err) {
+    post({ type: 'error', message: String(err && err.message || err) });
+  }
+};
+</script>
+
+<script>
+// =====================================================================
+// Nouveau morceau : relais (recherche + audio YouTube), séparation en
+// 6 pistes dans le navigateur, bibliothèque locale (IndexedDB).
+// L'adresse du relais n'est jamais dans ce fichier : elle vient du lien
+// d'invitation (#relais=…&cle=…) et reste dans ce navigateur.
+// =====================================================================
+const SOURCE_LABEL = { youtube: 'YouTube', file: 'Fichier', tab: 'Onglet' };
+const STEM_NAMES = ['Batteries', 'Basse', 'Autre', 'Chant', 'Guitare', 'Piano']; // ordre de sortie du modèle
+const SEP_SR = 44100;
+const MAX_SEC = 15 * 60;
+const STEPS = ["Téléchargement de l'audio", 'Modèle de séparation', 'Séparation en 6 pistes', 'Rangement dans la bibliothèque'];
+const STEP_WEIGHT = [0.1, 0.1, 0.7, 0.1];
+const MSG = {
+  relayDown: 'Recherche indisponible : le relais ne répond pas. Tu peux importer un fichier.',
+  noResult: "Aucun résultat. Essaie avec le nom de l'artiste.",
+  device: 'Cet appareil ne peut pas séparer ce morceau. Essaie depuis un ordinateur.',
+  memory: "La séparation a manqué de mémoire. Ferme d'autres onglets ou utilise un ordinateur.",
+  storage: "Plus assez de place pour ranger ce morceau. Supprime d'anciens morceaux.",
+  tooLong: 'Vidéo de plus de 15 min : choisis une version plus courte.',
+};
+const mbs = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0).replace('.', ',') + ' Mo';
+
+let library = [];          // morceaux importés : métadonnées, plus récents d'abord
+let jobs = [];             // imports en cours ou en échec
+let confirmDelete = null;  // id du morceau dont la suppression attend confirmation
+
+// ---------- Relais ----------
+const RELAY_STORE = 'mwd.relais';
+const relay = { url: '', key: '', session: '', sessionExp: 0, state: 'none', error: '' };
+
+function parseInvite(text) {
+  const s = String(text || '').trim();
+  const p = new URLSearchParams(s.includes('#') ? s.slice(s.indexOf('#') + 1) : s);
+  const url = (p.get('relais') || '').replace(/\/+$/, ''), key = p.get('cle') || '';
+  const okUrl = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url);
+  return okUrl && key ? { url, key } : null;
+}
+function setRelay(v) {
+  Object.assign(relay, { url: v ? v.url : '', key: v ? v.key : '', session: '', sessionExp: 0, state: v ? 'unknown' : 'none', error: '' });
+  try { v ? localStorage.setItem(RELAY_STORE, JSON.stringify(v)) : localStorage.removeItem(RELAY_STORE); } catch (e) {}
+}
+(() => {
+  // Le lien d'invitation reste dans la barre d'adresse : il sert de favori et redonne l'accès à chaque ouverture.
+  const inv = parseInvite(location.hash);
+  if (inv) return setRelay(inv);
+  try { const v = JSON.parse(localStorage.getItem(RELAY_STORE)); if (v && parseInvite(`relais=${v.url}&cle=${v.key}`)) setRelay(v); } catch (e) {}
+})();
+
+class RelayError extends Error {
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+}
+
+async function relayCall(path, { method = 'GET', headers = {}, body, signal, auth = true, retried = false } = {}) {
+  if (!relay.url) throw new RelayError(0, 'none', 'Aucun relais configuré.');
+  if (auth) await ensureSession();
+  let res;
+  try {
+    res = await fetch(relay.url + '/api' + path, {
+      method, body, signal, headers: auth ? { ...headers, Authorization: 'Bearer ' + relay.session } : headers,
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    throw new RelayError(0, 'down', MSG.relayDown);
+  }
+  if (res.ok) return res;
+  const err = await res.json().catch(() => ({}));
+  // Session expirée ou relais redémarré : on en redemande une, une seule fois.
+  if (res.status === 401 && err.error === 'session' && auth && !retried) {
+    relay.session = '';
+    return relayCall(path, { method, headers, body, signal, auth, retried: true });
+  }
+  throw new RelayError(res.status, err.error || 'http', err.message || `Erreur du relais (${res.status}).`);
+}
+
+let sessionPending = null;
+function ensureSession() {
+  if (relay.session && Date.now() < relay.sessionExp - 60000) return Promise.resolve();
+  return sessionPending ||= (async () => {
+    try {
+      const keyHeader = { 'X-Relay-Key': relay.key };
+      const cfg = await (await relayCall('/config', { headers: keyHeader, auth: false })).json();
+      const body = {};
+      if (cfg.turnstileSiteKey) body.turnstile = await turnstileToken(cfg.turnstileSiteKey);
+      const s = await (await relayCall('/session', {
+        method: 'POST', auth: false, headers: { ...keyHeader, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })).json();
+      relay.session = s.token;
+      relay.sessionExp = Date.parse(s.expiresAt) || Date.now() + 3e6;
+    } finally { sessionPending = null; }
+  })();
+}
+
+// Turnstile (Cloudflare) en mode invisible : prouve au relais que la demande vient de cette page, dans un vrai navigateur.
+let tsWidget = null, tsWaiter = null, tsScript = null;
+function loadTurnstile() {
+  return tsScript ||= new Promise((ok, ko) => {
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.async = true;
+    s.onload = ok;
+    s.onerror = () => { tsScript = null; ko(new Error('Vérification anti-robot indisponible (script Cloudflare bloqué ?).')); };
+    document.head.appendChild(s);
+  });
+}
+async function turnstileToken(siteKey) {
+  await loadTurnstile();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { tsWaiter = null; reject(new Error('Vérification anti-robot trop longue. Recharge la page.')); }, 30000);
+    tsWaiter = {
+      ok: t => { clearTimeout(timer); tsWaiter = null; resolve(t); },
+      ko: e => { clearTimeout(timer); tsWaiter = null; reject(e); },
+    };
+    if (tsWidget === null) {
+      tsWidget = turnstile.render('#ts', {
+        sitekey: siteKey, action: 'session', execution: 'execute',
+        callback: t => tsWaiter && tsWaiter.ok(t),
+        'error-callback': code => { tsWaiter && tsWaiter.ko(new Error(`Vérification anti-robot échouée (${code}). Recharge la page.`)); return true; },
+      });
+    } else turnstile.reset(tsWidget);
+    turnstile.execute(tsWidget);
+  });
+}
+
+async function checkRelay() {
+  if (!relay.url) { relay.state = 'none'; return renderPanel(); }
+  relay.state = 'checking';
+  renderPanel();
+  try {
+    await relayCall('/health');
+    relay.state = 'ok';
+  } catch (e) {
+    relay.state = 'error';
+    relay.error = e.code === 'down' ? MSG.relayDown : e.message;
+  }
+  renderPanel();
+}
+
+// ---------- Séparation ----------
+let sepWorker = null, gpuOk = null;
+async function webgpuOk() {
+  if (gpuOk === null) {
+    try { gpuOk = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { gpuOk = false; }
+  }
+  return gpuOk;
+}
+
+async function decode44k(buf) {
+  // Décodage + rééchantillonnage à 44,1 kHz en une fois : le contexte hors ligne impose sa fréquence.
+  let a;
+  try { a = await new OfflineAudioContext(2, 1, SEP_SR).decodeAudioData(buf); }
+  catch (e) { throw new Error('Format audio non pris en charge par ce navigateur.'); }
+  const left = a.getChannelData(0).slice();
+  const right = a.numberOfChannels > 1 ? a.getChannelData(1).slice() : left.slice();
+  return { left, right, duration: a.duration };
+}
+
+function separate(left, right, job, upd) {
+  return new Promise((resolve, reject) => {
+    if (!sepWorker) {
+      const url = URL.createObjectURL(new Blob([$('#sepWorker').textContent], { type: 'text/javascript' }));
+      sepWorker = new Worker(url, { type: 'module' });
+    }
+    const w = sepWorker;
+    let started = 0, segTimes = [];
+    const cellular = navigator.connection && /cellular/.test(navigator.connection.type || '');
+    job.stop = () => { w.terminate(); sepWorker = null; reject(new DOMException('Annulé', 'AbortError')); };
+    w.onmessage = ({ data: m }) => {
+      if (m.type === 'model') {
+        if (m.cached) upd(1, 1, 'en cache');
+        else upd(1, m.loaded / m.total, `${mbs(m.loaded)} / ${mbs(m.total)} (première fois seulement)${cellular ? ' · connexion mobile : 285 Mo' : ''}`);
+      } else if (m.type === 'progress') {
+        if (!started) started = performance.now();
+        if (m.seg) segTimes.push(m.ms);
+        const avg = segTimes.length ? segTimes.reduce((a, b) => a + b, 0) / segTimes.length : 0;
+        const rest = avg ? ` · reste ~${fmt(avg * (m.nSeg - m.seg) / 1000)}` : '';
+        upd(2, m.seg / m.nSeg, `tranche ${m.seg} / ${m.nSeg}${rest}`);
+      } else if (m.type === 'result') {
+        job.stop = null;
+        resolve(m.stems);
+      } else if (m.type === 'error') {
+        job.stop = null;
+        w.terminate(); sepWorker = null;
+        reject(new Error(/memory|alloc|buffer/i.test(m.message) ? MSG.memory : 'Séparation impossible : ' + m.message));
+      }
+    };
+    // Erreur sans message : le plus souvent un worker tué faute de mémoire.
+    w.onerror = e => { job.stop = null; sepWorker = null; reject(new Error(e.message ? 'Séparation impossible : ' + e.message : MSG.memory)); };
+    upd(1, 0, 'chargement…');
+    w.postMessage({ left, right }, [left.buffer, right.buffer]);
+  });
+}
+
+// ---------- Encodage des pistes : Opus (WebCodecs, conteneur Ogg) ou, à défaut, WAV 16 bits ----------
+async function resample(chs, from, to) {
+  const len = Math.round(chs[0].length * to / from);
+  const off = new OfflineAudioContext(2, len, to);
+  const b = off.createBuffer(2, chs[0].length, from);
+  b.copyToChannel(chs[0], 0);
+  b.copyToChannel(chs[1], 1);
+  const s = off.createBufferSource();
+  s.buffer = b;
+  s.connect(off.destination);
+  s.start();
+  const r = await off.startRendering();
+  return [r.getChannelData(0), r.getChannelData(1)];
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) { let r = i << 24; for (let j = 0; j < 8; j++) r = r & 0x80000000 ? (r << 1) ^ 0x04c11db7 : r << 1; t[i] = r >>> 0; }
+  return t;
+})();
+function oggPage(packets, granule, serial, seq, flags) {
+  const lacing = [];
+  for (const p of packets) { let n = p.length; while (n >= 255) { lacing.push(255); n -= 255; } lacing.push(n); }
+  const b = new Uint8Array(27 + lacing.length + packets.reduce((a, p) => a + p.length, 0));
+  const v = new DataView(b.buffer);
+  b.set([79, 103, 103, 83], 0);  // « OggS »
+  b[5] = flags;
+  v.setUint32(6, granule % 2 ** 32, true);
+  v.setUint32(10, Math.floor(granule / 2 ** 32), true);
+  v.setUint32(14, serial, true);
+  v.setUint32(18, seq, true);
+  b[26] = lacing.length;
+  b.set(lacing, 27);
+  let o = 27 + lacing.length;
+  for (const p of packets) { b.set(p, o); o += p.length; }
+  let crc = 0;
+  for (let i = 0; i < b.length; i++) crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ b[i]) & 255]) >>> 0;
+  v.setUint32(22, crc, true);
+  return b;
+}
+function oggOpus(packets, durations, totalSamples) {
+  const PRESKIP = 312, serial = (Math.random() * 2 ** 32) >>> 0, te = new TextEncoder();
+  const head = new Uint8Array(19), hv = new DataView(head.buffer);
+  head.set(te.encode('OpusHead'));
+  head[8] = 1; head[9] = 2;
+  hv.setUint16(10, PRESKIP, true);
+  hv.setUint32(12, 48000, true);
+  const vendor = te.encode('mini webdaw');
+  const tags = new Uint8Array(16 + vendor.length);
+  tags.set(te.encode('OpusTags'));
+  new DataView(tags.buffer).setUint32(8, vendor.length, true);
+  tags.set(vendor, 12);
+  let seq = 0, granule = 0, batch = [], segs = 0;
+  const pages = [oggPage([head], 0, serial, seq++, 2), oggPage([tags], 0, serial, seq++, 0)];
+  packets.forEach((p, i) => {
+    granule += durations[i] ? Math.round(durations[i] * 0.048) : 960;
+    batch.push(p);
+    segs += Math.floor(p.length / 255) + 1;
+    const last = i === packets.length - 1;
+    if (segs > 200 || last) {
+      // Dernière page : position exacte, le décodeur retire le remplissage de fin.
+      pages.push(oggPage(batch, PRESKIP + (last ? Math.min(totalSamples, granule) : granule), serial, seq++, last ? 4 : 0));
+      batch = []; segs = 0;
+    }
+  });
+  return new Blob(pages, { type: 'audio/ogg' });
+}
+async function encodeOpus48(l, r) {
+  const packets = [], durations = [];
+  let failure = null;
+  const enc = new AudioEncoder({
+    output: c => { const d = new Uint8Array(c.byteLength); c.copyTo(d); packets.push(d); durations.push(c.duration); },
+    error: e => { failure = e; },
+  });
+  enc.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2, bitrate: 160000 });
+  const n = l.length, F = 48000;
+  for (let i = 0; i < n && !failure; i += F) {
+    const k = Math.min(F, n - i), data = new Float32Array(k * 2);
+    data.set(l.subarray(i, i + k));
+    data.set(r.subarray(i, i + k), k);
+    const ad = new AudioData({ format: 'f32-planar', sampleRate: 48000, numberOfFrames: k, numberOfChannels: 2, timestamp: Math.round(i / 0.048), data });
+    enc.encode(ad);
+    ad.close();
+    if (enc.encodeQueueSize > 4) await new Promise(ok => enc.addEventListener('dequeue', ok, { once: true }));
+  }
+  await enc.flush();
+  enc.close();
+  if (failure) throw failure;
+  return oggOpus(packets, durations, n);
+}
+function toWav(l, r, sr) {
+  const n = l.length, b = new ArrayBuffer(44 + n * 4), v = new DataView(b);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 4, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 4, true);
+  for (let i = 0, o = 44; i < n; i++, o += 4) {
+    v.setInt16(o, Math.max(-1, Math.min(1, l[i])) * 32767, true);
+    v.setInt16(o + 2, Math.max(-1, Math.min(1, r[i])) * 32767, true);
+  }
+  return new Blob([b], { type: 'audio/wav' });
+}
+// Opus seulement si ce navigateur sait à la fois l'encoder et relire le fichier produit.
+let encoderKind = null;
+async function pickEncoder() {
+  if (encoderKind) return encoderKind;
+  encoderKind = 'wav';
+  try {
+    const cfg = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2, bitrate: 160000 };
+    if (typeof AudioEncoder === 'function' && (await AudioEncoder.isConfigSupported(cfg)).supported) {
+      const tone = new Float32Array(9600).map((_, i) => 0.3 * Math.sin(i / 8));
+      const blob = await encodeOpus48(tone, tone);
+      const a = await new OfflineAudioContext(2, 1, 48000).decodeAudioData(await blob.arrayBuffer());
+      if (a.duration > 0.15) encoderKind = 'opus';
+    }
+  } catch (e) {}
+  return encoderKind;
+}
+async function encodeStem(l, r) {
+  if (await pickEncoder() === 'wav') return { blob: toWav(l, r, SEP_SR), ext: 'wav' };
+  const [l48, r48] = await resample([l, r], SEP_SR, 48000);
+  return { blob: await encodeOpus48(l48, r48), ext: 'opus' };
+}
+function rmsDb(l, r) {
+  let s = 0;
+  for (let i = 0; i < l.length; i++) s += l[i] * l[i] + r[i] * r[i];
+  const ms = s / (2 * l.length || 1);
+  return ms > 0 ? Math.round(10 * Math.log10(ms) * 10) / 10 : -120;
+}
+
+// ---------- Bibliothèque (IndexedDB : métadonnées + une Blob par piste) ----------
+let dbPromise = null;
+function openDb() {
+  return dbPromise ||= new Promise((ok, ko) => {
+    const r = indexedDB.open('mini-webdaw', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('songs', { keyPath: 'id' }); r.result.createObjectStore('stems'); };
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => { dbPromise = null; ko(r.error); };
+  });
+}
+async function idb(store, mode, fn) {
+  const d = await openDb();
+  return new Promise((ok, ko) => {
+    const tx = d.transaction(store, mode);
+    const req = fn(tx.objectStore(store));
+    tx.oncomplete = () => ok(req && req.result);
+    tx.onerror = () => ko(tx.error);
+    tx.onabort = () => ko(tx.error);
+  });
+}
+const stemKey = (id, i) => `${id}/${i}`;
+async function libraryFiles(meta) {
+  return Promise.all(meta.stems.map(async (st, i) => {
+    const blob = await idb('stems', 'readonly', s => s.get(stemKey(meta.id, i)));
+    if (!blob) throw new Error('Piste manquante dans la bibliothèque : ' + st.name);
+    return new File([blob], st.file, { type: blob.type });
+  }));
+}
+async function removeFromDb(id) {
+  await idb('stems', 'readwrite', s => s.delete(IDBKeyRange.bound(id + '/', id + '/￿')));
+  await idb('songs', 'readwrite', s => s.delete(id));
+}
+async function deleteLibrarySong(id) {
+  confirmDelete = null;
+  try { await removeFromDb(id); } catch (e) { toast('Suppression impossible : ' + e.message); }
+  library = library.filter(m => m.id !== id);
+  if (cur && cur.key === 'l:' + id) {
+    stopAll(); playing = false; releaseStretch(cur); cur = null;
+    $('#main').innerHTML = '<div class="empty"><h2>Morceau supprimé</h2><p>Choisis un autre morceau dans la liste.</p></div>';
+  }
+  renderSongList();
+  renderFooter();
+}
+(async () => {
+  try {
+    library = (await idb('songs', 'readonly', s => s.getAll())).sort((a, b) => b.createdAt - a.createdAt);
+    renderSongList();
+  } catch (e) { console.warn('Bibliothèque indisponible', e); }
+})();
+
+// ---------- Imports : file d'attente, un seul à la fois ----------
+const jobLabel = j => j.state === 'queued' ? 'en attente' : j.state === 'error' ? 'échec' : STEPS[j.step].toLowerCase();
+
+function enqueue(job) {
+  Object.assign(job, { id: crypto.randomUUID(), state: 'queued', step: 0, pct: 0, detail: '', ctrl: new AbortController() });
+  jobs.push(job);
+  renderJobs();
+  renderSongList();
+  runJobs();
+}
+let jobsRunning = false;
+async function runJobs() {
+  if (jobsRunning) return;
+  jobsRunning = true;
+  let job;
+  while ((job = jobs.find(j => j.state === 'queued'))) await runJob(job);
+  jobsRunning = false;
+}
+
+async function runJob(job) {
+  job.state = 'running';
+  let wake = null;
+  const upd = (step, frac, detail) => {
+    job.step = step;
+    if (detail !== undefined) job.detail = detail;
+    job.pct = Math.round(100 * (STEP_WEIGHT.slice(0, step).reduce((a, b) => a + b, 0) + STEP_WEIGHT[step] * Math.min(1, frac)));
+    renderJobs();
+    renderSongList();
+  };
+  try {
+    if (!(await webgpuOk()) || (navigator.deviceMemory && navigator.deviceMemory < 4)) throw new Error(MSG.device);
+    upd(0, 0, '');
+    let buf;
+    if (job.file) { buf = await job.file.arrayBuffer(); upd(0, 1, 'fichier local'); }
+    else buf = await downloadAudio(job, upd);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    const { left, right, duration } = await decode44k(buf);
+    buf = null;
+    if (duration > MAX_SEC) throw new Error(MSG.tooLong);
+    job.duration = job.duration || Math.round(duration);
+    try { wake = navigator.wakeLock ? await navigator.wakeLock.request('screen') : null; } catch (e) {}
+    const stems = await separate(left, right, job, upd);
+    upd(3, 0, '');
+    const safe = job.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Morceau';
+    const meta = {
+      id: job.id, title: job.title, source: job.source, youtubeId: job.youtubeId, channel: job.channel,
+      duration: job.duration, createdAt: Date.now(), stems: [],
+    };
+    for (let i = 0; i < 6; i++) {
+      if (job.state !== 'running') throw new DOMException('Annulé', 'AbortError');
+      const [l, r] = stems[i];
+      const { blob, ext } = await encodeStem(l, r);
+      const file = `${safe} (${STEM_NAMES[i]}).${ext}`;
+      await idb('stems', 'readwrite', s => s.put(blob, stemKey(job.id, i)));
+      meta.stems.push({ name: STEM_NAMES[i], file, rmsDb: rmsDb(l, r) });
+      stems[i] = null;   // libère la mémoire piste par piste
+      upd(3, (i + 1) / 6, `${i + 1} / 6`);
+    }
+    await idb('songs', 'readwrite', s => s.put(meta));
+    library.unshift(meta);
+    job.state = 'done';
+    jobs = jobs.filter(j => j !== job);
+    renderJobs();
+    renderSongList();
+    renderFooter();
+    // Ouverture automatique, sauf si quelqu'un écoute autre chose.
+    if (!playing) { closePanel(); loadSong('l:' + meta.id); }
+    else toast(`« ${meta.title} » est prêt.`, 'Ouvrir', () => loadSong('l:' + meta.id));
+  } catch (e) {
+    removeFromDb(job.id).catch(() => {});
+    if (job.state === 'cancelled') jobs = jobs.filter(j => j !== job);
+    else {
+      job.state = 'error';
+      job.error = e.name === 'QuotaExceededError' ? MSG.storage : e.name === 'AbortError' ? 'Annulé.' : e.message;
+    }
+    renderJobs();
+    renderSongList();
+  } finally {
+    job.stop = null;
+    if (wake) wake.release().catch(() => {});
+  }
+}
+
+async function downloadAudio(job, upd) {
+  const res = await relayCall('/audio?id=' + encodeURIComponent(job.youtubeId), { signal: job.ctrl.signal });
+  const total = Number(res.headers.get('content-length')) || 0;
+  const reader = res.body.getReader(), chunks = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    upd(0, total ? loaded / total : 0, total ? `${mbs(loaded)} / ${mbs(total)}` : mbs(loaded));
+  }
+  if (total && loaded < total) throw new Error('Téléchargement interrompu. Réessaie.');
+  return new Blob(chunks).arrayBuffer();
+}
+
+function cancelJob(job) {
+  if (job.state === 'error') { jobs = jobs.filter(j => j !== job); }
+  else {
+    const wasRunning = job.state === 'running';
+    job.state = 'cancelled';
+    job.ctrl.abort();
+    if (job.stop) job.stop();
+    if (!wasRunning) jobs = jobs.filter(j => j !== job);
+  }
+  renderJobs();
+  renderSongList();
+}
+
+// ---------- Panneau « Nouveau morceau » ----------
+const panel = { tab: 'search', results: [], note: '', noteErr: false, previewId: null, seq: 0 };
+$('#newSong').onclick = () => ($('#panel').hidden ? openPanel() : closePanel());
+$('#pClose').onclick = closePanel;
+function openPanel() {
+  $('#panel').hidden = false;
+  renderPanel();
+  if (relay.url && relay.state !== 'ok') checkRelay();
+}
+function closePanel() {
+  $('#panel').hidden = true;
+  panel.previewId = null;   // arrête l'aperçu YouTube
+  renderResults();
+}
+
+function renderPanel() {
+  if ($('#panel').hidden) return;
+  renderJobs();
+  // Onglets YouTube masqués seulement quand il n'y a pas de relais ou qu'il ne répond pas.
+  const relayTabs = ['ok', 'unknown', 'checking'].includes(relay.state);
+  const tabs = [['search', 'Rechercher', relayTabs], ['link', 'Lien YouTube', relayTabs], ['file', 'Fichier', true]].filter(t => t[2]);
+  const tab = tabs.some(t => t[0] === panel.tab) ? panel.tab : 'file';
+  $('#pTabs').innerHTML = tabs.map(([id, label]) => `<button class="tab${tab === id ? ' on' : ''}" role="tab" data-tab="${id}">${label}</button>`).join('');
+  $('#pTabs').querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    if (tab === b.dataset.tab) return;
+    panel.tab = b.dataset.tab; panel.results = []; panel.note = ''; panel.previewId = null;
+    renderPanel();
+  });
+  const body = $('#pBody');
+  let html = '';
+  if (relay.state === 'checking') html += '<p class="note">Connexion au relais…</p>';
+  else if (relay.state === 'none') html += `<p class="note">Pour chercher sur YouTube, ouvre le lien d'invitation qu'on t'a envoyé, ou colle-le ici.</p>${inviteField()}`;
+  else if (relay.state === 'error') html += `<p class="note err">${esc(relay.error)}</p>${relay.error === MSG.relayDown ? '' : inviteField()}`;
+  if (tab === 'search') {
+    html += `<div class="field"><input id="q" type="search" placeholder="Artiste, titre…" autocomplete="off" value="${esc(panel.q || '')}"></div>`;
+  } else if (tab === 'link') {
+    html += `<div class="field"><input id="url" type="url" placeholder="https://youtu.be/…" value="${esc(panel.url || '')}"><button class="btn" id="urlGo">Afficher</button></div>`;
+  } else {
+    html += `<label class="drop" id="drop">Glisse un fichier audio ici (MP3, M4A, WAV, WebM, FLAC)
+      <span class="btn">Choisir un fichier…</span><input type="file" id="fileIn" accept="audio/*,.mp3,.m4a,.wav,.webm,.flac,.opus,.ogg" hidden></label>`;
+  }
+  html += '<p class="note" id="pNote"></p><div class="results" id="pResults"></div>';
+  body.innerHTML = html;
+  const inv = $('#invGo');
+  if (inv) inv.onclick = () => {
+    const v = parseInvite($('#inv').value);
+    if (!v) { $('#inv').setCustomValidity('Lien non reconnu'); $('#inv').reportValidity(); return; }
+    setRelay(v);
+    checkRelay();
+  };
+  if (tab === 'search') {
+    const q = $('#q');
+    let timer;
+    q.oninput = () => { panel.q = q.value; clearTimeout(timer); timer = setTimeout(runSearch, 400); };
+    q.onkeydown = e => { if (e.key === 'Enter') { clearTimeout(timer); runSearch(); } };
+    setTimeout(() => q.focus(), 0);
+  } else if (tab === 'link') {
+    $('#urlGo').onclick = runInfo;
+    $('#url').onkeydown = e => { if (e.key === 'Enter') runInfo(); };
+    $('#url').oninput = e => { panel.url = e.target.value; };
+  } else {
+    const drop = $('#drop'), input = $('#fileIn');
+    input.onchange = () => input.files[0] && importFile(input.files[0]);
+    drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+    drop.ondragleave = () => drop.classList.remove('over');
+    drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) importFile(f); };
+  }
+  renderResults();
+  renderFooter();
+}
+const inviteField = () => `<div class="field"><input id="inv" placeholder="Coller le lien d'invitation"><button class="btn" id="invGo">Valider</button></div>`;
+
+function setNote(text, err) {
+  panel.note = text; panel.noteErr = !!err;
+  const n = $('#pNote');
+  if (n) { n.textContent = text; n.classList.toggle('err', !!err); }
+}
+
+async function runSearch() {
+  const q = (panel.q || '').trim();
+  const seq = ++panel.seq;
+  if (!q) { panel.results = []; setNote(''); return renderResults(); }
+  setNote('Recherche…');
+  try {
+    const { results } = await (await relayCall('/search?q=' + encodeURIComponent(q.slice(0, 200)) + '&limit=10')).json();
+    if (seq !== panel.seq) return;
+    panel.results = results;
+    panel.previewId = null;
+    setNote(results.length ? '' : MSG.noResult);
+  } catch (e) {
+    if (seq !== panel.seq) return;
+    panel.results = [];
+    setNote(e.message, true);
+  }
+  renderResults();
+}
+
+async function runInfo() {
+  const url = ($('#url').value || '').trim();
+  if (!url) return;
+  const seq = ++panel.seq;
+  setNote('Recherche de la vidéo…');
+  try {
+    const r = await (await relayCall('/info?url=' + encodeURIComponent(url))).json();
+    if (seq !== panel.seq) return;
+    panel.results = [r];
+    setNote(r.duration > MAX_SEC ? MSG.tooLong : '', r.duration > MAX_SEC);
+  } catch (e) {
+    if (seq !== panel.seq) return;
+    panel.results = [];
+    setNote(e.message, true);
+  }
+  renderResults();
+}
+
+function renderResults() {
+  const box = $('#pResults');
+  if (!box) return;
+  const ok = id => /^[A-Za-z0-9_-]{11}$/.test(id);
+  box.innerHTML = panel.results.filter(r => ok(r.id)).map(r => `
+    <div class="card" data-id="${r.id}">
+      <img src="https://i.ytimg.com/vi/${r.id}/mqdefault.jpg" alt="" loading="lazy">
+      <div class="meta"><b>${esc(r.title)}</b><small>${esc(r.channel || '')}${r.duration ? ' · ' + fmt(r.duration) : ''}</small></div>
+      <div class="acts">
+        <button class="btn" data-a="preview">${panel.previewId === r.id ? 'Fermer' : 'Aperçu'}</button>
+        <button class="btn primary" data-a="import"${r.duration > MAX_SEC ? ' disabled' : ''}>Importer</button>
+      </div>
+      ${panel.previewId === r.id ? `<iframe src="https://www.youtube-nocookie.com/embed/${r.id}?autoplay=1&rel=0" title="Aperçu" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : ''}
+    </div>`).join('');
+  box.querySelectorAll('.card').forEach(card => {
+    const r = panel.results.find(x => x.id === card.dataset.id);
+    card.querySelector('[data-a=preview]').onclick = () => { panel.previewId = panel.previewId === r.id ? null : r.id; renderResults(); };
+    card.querySelector('[data-a=import]').onclick = () => {
+      panel.previewId = null;
+      renderResults();
+      enqueue({ source: 'youtube', youtubeId: r.id, title: r.title, channel: r.channel, duration: r.duration });
+    };
+  });
+}
+
+function importFile(file) {
+  enqueue({ source: 'file', file, title: file.name.replace(/\.[^.]+$/, '') || 'Morceau' });
+}
+
+function renderJobs() {
+  const box = $('#pJobs');
+  if (!box || $('#panel').hidden) return;
+  box.innerHTML = jobs.map((j, k) => `
+    <div class="job" data-k="${k}">
+      <div class="jt"><b>${esc(j.title)}</b><span class="pct">${j.state === 'running' ? j.pct + ' %' : ''}</span>
+        <button class="btn" data-a="cancel">${j.state === 'error' ? 'Fermer' : 'Annuler'}</button></div>
+      ${j.state === 'error' ? `<p class="note err">${esc(j.error)}</p>` : j.state === 'queued' ? '<p class="note">En attente : un import à la fois.</p>' : `
+      <div class="bar"><span style="width:${j.pct}%"></span></div>
+      <ol class="steps">${STEPS.map((s, i) => `<li class="${i < j.step ? 'done' : i === j.step ? 'cur' : ''}"><i>${i < j.step ? '✓' : i === j.step ? '›' : ''}</i><span>${s}${i === j.step && j.detail ? ' · ' + esc(j.detail) : ''}</span></li>`).join('')}</ol>
+      <p class="note">Tu peux fermer ce panneau et écouter autre chose pendant le calcul.</p>`}
+    </div>`).join('');
+  box.querySelectorAll('.job').forEach(el => { el.querySelector('[data-a=cancel]').onclick = () => cancelJob(jobs[+el.dataset.k]); });
+}
+
+async function renderFooter() {
+  const foot = $('#pFoot');
+  if (!foot || $('#panel').hidden) return;
+  let space = '';
+  try {
+    const { usage, quota } = await navigator.storage.estimate();
+    space = `Espace utilisé : ${mbs(usage)} · disponible : ${mbs(quota - usage)}${quota - usage < 500 * 1048576 ? ' — presque plein' : ''}.`;
+  } catch (e) {}
+  foot.innerHTML = `
+    ${relay.url ? `<p>Relais configuré · <button class="link" id="forget">Oublier ce relais</button></p>` : ''}
+    ${space ? `<p>${space}</p>` : ''}
+    <p>Séparation dans ce navigateur : Demucs htdemucs_6s (Meta, MIT) via ONNX Runtime Web, méthode de kramp/audio-split (MIT). Le modèle (285 Mo) est téléchargé une seule fois.</p>
+    <p>Accès au relais protégé par Cloudflare Turnstile : <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">confidentialité de Turnstile</a>.</p>`;
+  const f = $('#forget');
+  if (f) f.onclick = () => { setRelay(null); renderPanel(); };
+}
+
+function toast(text, action, fn) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<span>${esc(text)}</span>${action ? `<button class="btn primary">${esc(action)}</button>` : ''}`;
+  if (action) t.querySelector('button').onclick = () => { t.remove(); fn(); };
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 8000);
+}
+
+// Prévenir avant de fermer l'onglet pendant un import.
+window.addEventListener('beforeunload', e => { if (jobs.some(j => j.state === 'running')) e.preventDefault(); });
 </script>
 </body>
 </html>
