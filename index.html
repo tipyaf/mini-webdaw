@@ -953,6 +953,10 @@ const SEP_SR = 44100;
 const MAX_SEC = 15 * 60;
 const STEPS = ["Téléchargement de l'audio", 'Modèle de séparation', 'Séparation en 6 pistes', 'Rangement dans la bibliothèque'];
 const STEP_WEIGHT = [0.1, 0.1, 0.7, 0.1];
+// Séparation sur le serveur (téléphones, tablettes, ordinateurs sans WebGPU) : ~1 min de calcul par minute de musique.
+const SERVER_STEPS = ["Téléchargement de l'audio par le serveur", "File d'attente du serveur", 'Séparation en 6 pistes sur le serveur', 'Rangement dans la bibliothèque'];
+const SERVER_WEIGHT = [0.05, 0.05, 0.8, 0.1];
+const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 const MSG = {
   relayDown: 'Recherche indisponible : le relais ne répond pas. Tu peux importer un fichier.',
   noResult: "Aucun résultat. Essaie avec le nom de l'artiste.",
@@ -969,7 +973,7 @@ let confirmDelete = null;  // id du morceau dont la suppression attend confirmat
 
 // ---------- Relais ----------
 const RELAY_STORE = 'mwd.relais';
-const relay = { url: '', key: '', session: '', sessionExp: 0, state: 'none', error: '' };
+const relay = { url: '', key: '', session: '', sessionExp: 0, state: 'none', error: '', separation: false };
 
 function parseInvite(text) {
   const s = String(text || '').trim();
@@ -1069,7 +1073,8 @@ async function checkRelay() {
   relay.state = 'checking';
   renderPanel();
   try {
-    await relayCall('/health');
+    const h = await (await relayCall('/health')).json();
+    relay.separation = !!h.separation;
     relay.state = 'ok';
   } catch (e) {
     relay.state = 'error';
@@ -1314,7 +1319,12 @@ async function deleteLibrarySong(id) {
 })();
 
 // ---------- Imports : file d'attente, un seul à la fois ----------
-const jobLabel = j => j.state === 'queued' ? 'en attente' : j.state === 'error' ? 'échec' : STEPS[j.step].toLowerCase();
+const jobSteps = j => j.server ? SERVER_STEPS : STEPS;
+const jobLabel = j => j.state === 'queued' ? 'en attente' : j.state === 'error' ? 'échec' : jobSteps(j)[j.step].toLowerCase();
+// Séparer dans ce navigateur seulement sur ordinateur avec WebGPU : sur téléphone et tablette, la carte graphique ou la mémoire lâche.
+// « ?serveur » dans l'adresse force la séparation sur le serveur (essais depuis un ordinateur).
+const FORCE_SERVER = new URLSearchParams(location.search).has('serveur');
+const browserCanSeparate = async () => !FORCE_SERVER && !MOBILE && !(navigator.deviceMemory && navigator.deviceMemory < 4) && await webgpuOk();
 
 function enqueue(job) {
   Object.assign(job, { id: crypto.randomUUID(), state: 'queued', step: 0, pct: 0, detail: '', ctrl: new AbortController() });
@@ -1336,41 +1346,43 @@ async function runJob(job) {
   job.state = 'running';
   let wake = null;
   const upd = (step, frac, detail) => {
+    const w = job.server ? SERVER_WEIGHT : STEP_WEIGHT;
     job.step = step;
     if (detail !== undefined) job.detail = detail;
-    job.pct = Math.round(100 * (STEP_WEIGHT.slice(0, step).reduce((a, b) => a + b, 0) + STEP_WEIGHT[step] * Math.min(1, frac)));
+    job.pct = Math.round(100 * (w.slice(0, step).reduce((a, b) => a + b, 0) + w[step] * Math.min(1, frac)));
     renderJobs();
     renderSongList();
   };
   try {
-    if (!(await webgpuOk()) || (navigator.deviceMemory && navigator.deviceMemory < 4)) throw new Error(MSG.device);
-    upd(0, 0, '');
-    let buf;
-    if (job.file) { buf = await job.file.arrayBuffer(); upd(0, 1, 'fichier local'); }
-    else buf = await downloadAudio(job, upd);
+    if (!job.server && !(await browserCanSeparate())) job.server = true;
+    if (job.server && !(relay.state === 'ok' && relay.separation)) throw new Error(MSG.device);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    const { left, right, duration } = await decode44k(buf);
-    buf = null;
-    if (duration > MAX_SEC) throw new Error(MSG.tooLong);
-    job.duration = job.duration || Math.round(duration);
     try { wake = navigator.wakeLock ? await navigator.wakeLock.request('screen') : null; } catch (e) {}
-    const stems = await separate(left, right, job, upd);
+    let stems;
+    if (job.server) stems = await separateOnServer(job, upd);
+    else {
+      try { stems = await separateHere(job, upd); }
+      catch (e) {
+        // Carte graphique perdue ou mémoire insuffisante : on confie le morceau au serveur.
+        if (e.name === 'AbortError' || job.state !== 'running' || !(relay.state === 'ok' && relay.separation) || !/Séparation|mémoire/.test(e.message)) throw e;
+        job.server = true;
+        stems = await separateOnServer(job, upd);
+      }
+    }
     upd(3, 0, '');
     const safe = job.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Morceau';
     const meta = {
       id: job.id, title: job.title, source: job.source, youtubeId: job.youtubeId, channel: job.channel,
       duration: job.duration, createdAt: Date.now(), stems: [],
     };
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < stems.length; i++) {
       if (job.state !== 'running') throw new DOMException('Annulé', 'AbortError');
-      const [l, r] = stems[i];
-      const { blob, ext } = await encodeStem(l, r);
-      const file = `${safe} (${STEM_NAMES[i]}).${ext}`;
+      const { name, blob, ext, rmsDb: level } = await stems[i]();
       await idb('stems', 'readwrite', s => s.put(blob, stemKey(job.id, i)));
-      meta.stems.push({ name: STEM_NAMES[i], file, rmsDb: rmsDb(l, r) });
-      stems[i] = null;   // libère la mémoire piste par piste
-      upd(3, (i + 1) / 6, `${i + 1} / 6`);
+      meta.stems.push({ name, file: `${safe} (${name}).${ext}`, rmsDb: level });
+      upd(3, (i + 1) / stems.length, `${i + 1} / ${stems.length}`);
     }
+    if (job.cleanup) job.cleanup();
     await idb('songs', 'readwrite', s => s.put(meta));
     library.unshift(meta);
     job.state = 'done';
@@ -1383,6 +1395,7 @@ async function runJob(job) {
     else toast(`« ${meta.title} » est prêt.`, 'Ouvrir', () => loadSong('l:' + meta.id));
   } catch (e) {
     removeFromDb(job.id).catch(() => {});
+    if (job.cleanup) job.cleanup();
     if (job.state === 'cancelled') jobs = jobs.filter(j => j !== job);
     else {
       job.state = 'error';
@@ -1394,6 +1407,61 @@ async function runJob(job) {
     job.stop = null;
     if (wake) wake.release().catch(() => {});
   }
+}
+
+// Séparation dans ce navigateur. Renvoie 6 fonctions qui encodent chacune une piste, au moment du rangement.
+async function separateHere(job, upd) {
+  upd(0, 0, '');
+  let buf;
+  if (job.file) { buf = await job.file.arrayBuffer(); upd(0, 1, 'fichier local'); }
+  else buf = await downloadAudio(job, upd);
+  const { left, right, duration } = await decode44k(buf);
+  buf = null;
+  if (duration > MAX_SEC) throw new Error(MSG.tooLong);
+  job.duration = job.duration || Math.round(duration);
+  const stems = await separate(left, right, job, upd);
+  return stems.map((st, i) => async () => {
+    const [l, r] = st;
+    const { blob, ext } = await encodeStem(l, r);
+    const level = rmsDb(l, r);
+    stems[i] = null;   // libère la mémoire piste par piste
+    return { name: STEM_NAMES[i], blob, ext, rmsDb: level };
+  });
+}
+
+// Séparation sur le serveur : le relais télécharge (ou reçoit le fichier), sépare, puis on récupère 6 pistes AAC.
+async function separateOnServer(job, upd) {
+  upd(0, 0, job.file ? 'envoi du fichier…' : '');
+  const signal = job.ctrl.signal;
+  const created = job.file
+    ? await relayCall('/separate', { method: 'POST', body: job.file, headers: { 'Content-Type': job.file.type || 'application/octet-stream' }, signal })
+    : await relayCall('/separate?id=' + encodeURIComponent(job.youtubeId), { method: 'POST', signal });
+  let s = await created.json();
+  const sid = s.id;
+  job.stop = () => relayCall('/separate/' + sid, { method: 'DELETE' }).catch(() => {});
+  job.cleanup = () => { relayCall('/separate/' + sid, { method: 'DELETE' }).catch(() => {}); job.cleanup = null; };
+  let sepStart = 0;
+  for (;;) {
+    if (job.state !== 'running') throw new DOMException('Annulé', 'AbortError');
+    if (s.state === 'queued') upd(1, 0, s.position > 1 ? `${s.position - 1} morceau${s.position > 2 ? 'x' : ''} avant le tien` : 'démarrage…');
+    else if (s.state === 'downloading') upd(0, 0.5, '');
+    else if (s.state === 'separating') {
+      if (!sepStart) sepStart = performance.now();
+      const p = s.progress || 0, spent = (performance.now() - sepStart) / 1000;
+      const dur = s.duration || job.duration;
+      const rest = p > 0.05 ? spent * (1 - p) / p : dur ? dur * (1 - p) : 0;
+      upd(2, p, `${Math.round(p * 100)} %${rest ? ` · reste ~${fmt(rest)}` : ''}`);
+    } else if (s.state === 'done') break;
+    else if (s.state === 'error') throw new Error(s.message || 'La séparation sur le serveur a échoué.');
+    await new Promise(r => setTimeout(r, 2000));
+    s = await (await relayCall('/separate/' + sid, { signal })).json();
+  }
+  job.title = job.title || s.title || 'Morceau';
+  job.duration = job.duration || Math.round(s.duration || 0);
+  return s.stems.map((st, i) => async () => {
+    const res = await relayCall(`/separate/${sid}/stems/${i}`, { signal });
+    return { name: st.name, blob: await res.blob(), ext: 'm4a', rmsDb: st.rmsDb };
+  });
 }
 
 async function downloadAudio(job, upd) {
@@ -1578,7 +1646,7 @@ function renderJobs() {
         <button class="btn" data-a="cancel">${j.state === 'error' ? 'Fermer' : 'Annuler'}</button></div>
       ${j.state === 'error' ? `<p class="note err">${esc(j.error)}</p>` : j.state === 'queued' ? '<p class="note">En attente : un import à la fois.</p>' : `
       <div class="bar"><span style="width:${j.pct}%"></span></div>
-      <ol class="steps">${STEPS.map((s, i) => `<li class="${i < j.step ? 'done' : i === j.step ? 'cur' : ''}"><i>${i < j.step ? '✓' : i === j.step ? '›' : ''}</i><span>${s}${i === j.step && j.detail ? ' · ' + esc(j.detail) : ''}</span></li>`).join('')}</ol>
+      <ol class="steps">${jobSteps(j).map((s, i) => `<li class="${i < j.step ? 'done' : i === j.step ? 'cur' : ''}"><i>${i < j.step ? '✓' : i === j.step ? '›' : ''}</i><span>${s}${i === j.step && j.detail ? ' · ' + esc(j.detail) : ''}</span></li>`).join('')}</ol>
       <p class="note">Tu peux fermer ce panneau et écouter autre chose pendant le calcul.</p>`}
     </div>`).join('');
   box.querySelectorAll('.job').forEach(el => { el.querySelector('[data-a=cancel]').onclick = () => cancelJob(jobs[+el.dataset.k]); });

@@ -176,13 +176,14 @@ Bouton **Nouveau morceau** : un morceau devient 6 pistes (Chant, Guitare, Basse,
 
 - **Sources** : recherche YouTube et lien YouTube (via un relais privé), ou fichier audio (MP3, M4A, WAV, WebM, FLAC).
 - **Relais** : son adresse n'est pas dans ce dépôt. Elle arrive par un lien d'invitation `…/mini-webdaw/#relais=<adresse>&cle=<clé>` (gardé en favori ; la partie après `#` n'est jamais envoyée à GitHub), mémorisée dans `localStorage`. Accès : clé du lien → vérification Cloudflare Turnstile invisible → session d'1 h. Sans relais, seul l'onglet Fichier est proposé.
-- **Séparation** : Demucs htdemucs_6s (Meta, MIT) en ONNX (`kramp/htdemucs-6s-webgpu-onnx`, 285 Mo, mis en cache après le premier téléchargement), ONNX Runtime Web 1.27 sur **WebGPU**, dans un worker. Tranches de 7,8 s avec 25 % de recouvrement (méthode de l'espace Hugging Face kramp/audio-split, MIT). Sans WebGPU : message « Cet appareil ne peut pas séparer ce morceau ».
+- **Séparation** : Demucs htdemucs_6s (Meta, MIT) en ONNX (`kramp/htdemucs-6s-webgpu-onnx`, 285 Mo, mis en cache après le premier téléchargement), ONNX Runtime Web 1.27 sur **WebGPU**, dans un worker. Tranches de 7,8 s avec 25 % de recouvrement (méthode de l'espace Hugging Face kramp/audio-split, MIT). Seulement sur ordinateur.
+- **Séparation sur le serveur** (téléphones, tablettes, ordinateurs sans WebGPU, ou carte graphique qui lâche en cours de route) : le relais sépare lui-même (Demucs sur processeur, ~1 min par minute de musique, un morceau à la fois) et renvoie 6 pistes AAC. Un fichier importé depuis un téléphone est envoyé au relais. `?serveur` dans l'adresse force ce mode depuis un ordinateur. Constat du 22 oct. 2026 : dans le navigateur, Android (Adreno, WebGPU) perd la carte graphique (« Device is lost ») et l'iPad recharge la page faute de mémoire.
 - **Bibliothèque** : IndexedDB (`mini-webdaw` : `songs` pour les métadonnées, `stems` pour les pistes). Pistes en **Opus 160 kb/s** (WebCodecs, conteneur Ogg écrit à la main), ou WAV 16 bits si le navigateur ne sait pas encoder puis relire l'Opus. Niveau RMS de chaque piste gardé (`rmsDb`).
 - **Déroulé** : un import à la fois (file d'attente), progression par étape (audio, modèle, tranche N/M + temps restant, rangement), Annuler, écran maintenu allumé (Wake Lock). Ouverture automatique à la fin, sauf si un autre morceau joue (notification).
 
 Mesures (M3 Pro, Chrome, 21-22 oct. 2026) : morceau de 2 min 42 importé en ~1 min 10 ; 6 pistes Opus = 18,7 Mo ; réouverture après rechargement en 0,45 s.
 
-Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides repliées, vue compacte téléphone, secours serveur sans WebGPU.
+Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides repliées, vue compacte téléphone.
 
 ## 8. Repères dans le code (`index.html`)
 
@@ -193,7 +194,7 @@ Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides r
 | Chargement | `$('#dir').onchange`, `loadSong`, `trackLabel`, `rank` |
 | Rendu | `renderSong`, `renderSongList`, `drawWaves`, `computePeaks`, `drawRuler`, `tick` |
 | Relais | `parseInvite`, `setRelay`, `relayCall`, `ensureSession`, `turnstileToken`, `checkRelay` |
-| Séparation | `#sepWorker` (worker), `separate`, `decode44k`, `webgpuOk` |
+| Séparation | `#sepWorker` (worker), `separate`, `separateHere`, `separateOnServer`, `browserCanSeparate`, `decode44k`, `webgpuOk` |
 | Encodage | `pickEncoder`, `encodeStem`, `encodeOpus48`, `oggOpus`, `oggPage`, `toWav` |
 | Bibliothèque | `library`, `idb`, `libraryFiles`, `deleteLibrarySong` |
 | Imports | `enqueue`, `runJobs`, `runJob`, `downloadAudio`, `cancelJob` |
