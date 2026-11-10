@@ -1063,6 +1063,7 @@ const MSG = {
   relayDown: 'Recherche indisponible : le relais ne répond pas. Tu peux importer un fichier.',
   noResult: "Aucun résultat. Essaie avec le nom de l'artiste.",
   device: 'Cet appareil ne peut pas séparer ce morceau. Essaie depuis un ordinateur.',
+  noInvite: "Sur téléphone et tablette, la séparation se fait sur le serveur : ouvre d'abord dans ce navigateur le lien d'invitation qu'on t'a envoyé (chaque navigateur le demande une fois).",
   memory: "La séparation a manqué de mémoire. Ferme d'autres onglets ou utilise un ordinateur.",
   storage: "Plus assez de place pour ranger ce morceau. Supprime d'anciens morceaux.",
   tooLong: 'Vidéo de plus de 15 min : choisis une version plus courte.',
@@ -1477,7 +1478,8 @@ async function runJob(job) {
   };
   try {
     if (!job.server && !(await browserCanSeparate())) job.server = true;
-    if (job.server && !(relay.state === 'ok' && relay.separation)) throw new Error(MSG.device);
+    if (job.server && !(relay.state === 'ok' && relay.separation))
+      throw new Error(relay.state === 'none' ? MSG.noInvite : relay.state === 'error' && relay.error ? relay.error : MSG.device);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     try { wake = navigator.wakeLock ? await navigator.wakeLock.request('screen') : null; } catch (e) {}
     let stems;
@@ -1646,7 +1648,7 @@ function renderPanel() {
   const body = $('#pBody');
   let html = '';
   if (relay.state === 'checking') html += '<p class="note">Connexion au relais…</p>';
-  else if (relay.state === 'none') html += `<p class="note">Pour chercher sur YouTube, ouvre le lien d'invitation qu'on t'a envoyé, ou colle-le ici.</p>${inviteField()}`;
+  else if (relay.state === 'none') html += `<p class="note">${MOBILE ? 'Sur téléphone et tablette, il faut le lien d\'invitation, même pour un fichier' : 'Pour chercher sur YouTube'} : ouvre le lien d'invitation qu'on t'a envoyé, ou colle-le ici. Chaque navigateur le demande une fois.</p>${inviteField()}`;
   else if (relay.state === 'error') html += `<p class="note err">${esc(relay.error)}</p>${relay.error === MSG.relayDown ? '' : inviteField()}`;
   if (tab === 'search') {
     html += `<div class="field"><input id="q" type="search" placeholder="Artiste, titre…" autocomplete="off" value="${esc(panel.q || '')}"></div>`;
@@ -1820,7 +1822,10 @@ window.addEventListener('beforeunload', e => { if (jobs.some(j => j.state === 'r
     } catch (e) { /* hors-ligne : rien à faire */ }
   }
   document.getElementById('updateReload').onclick = () => {
-    location.href = location.pathname + '?v=' + Date.now();
+    // Adresse inédite pour contourner le cache, en gardant ?serveur et le lien d'invitation (#relais=…) du favori.
+    const u = new URL(location.href);
+    u.searchParams.set('v', Date.now());
+    location.href = u.href;
   };
   if (location.protocol !== 'file:') {
     checkForUpdate();
