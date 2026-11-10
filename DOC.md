@@ -69,7 +69,7 @@ Un navigateur ne peut pas lister un dossier local tout seul : la sélection est 
 ## 3. Fonctionnalités
 
 - Liste des chansons (tri alphabétique `fr`), pistes triées : chant, voix, guitare, basse, batterie(s), piano, clavier, autre, puis le reste.
-- Par piste : couleur, forme d'onde (canvas, pics calculés depuis l'AudioBuffer), **M**, **S** (cumulable), fader en dB.
+- Par piste : couleur, forme d'onde (canvas, pics calculés au décodage), **M**, **S** (cumulable), fader en dB.
 - Transport : lecture/pause, retour début, temps, tête de lecture, règle.
 - Boucle A-B (boutons A / B / Boucle / ✕, ou Maj+glisser).
 - **Tonalité** −12 … +12 demi-tons, tempo inchangé, mémorisée par chanson (en mémoire, pas persistée).
@@ -81,16 +81,17 @@ Un navigateur ne peut pas lister un dossier local tout seul : la sélection est 
 ## 4. Architecture audio (Web Audio API)
 
 ```
-AudioBufferSourceNode ─┐                       (lecture directe, tonalité = 0)
-                       ├─► track.gain ─► bus ─► master ─► limiter ─► destination
-Signalsmith Stretch ───┘     (mute/solo/   (fondus   (volume    (AudioWorklet,
-(tonalité ≠ 0)                fader dB)    transport) général)    plafond −1 dBFS)
+lecteur ─ sortie i ─┬──────────────────────┐   (lecture directe, tonalité = 0)
+(AudioWorklet,      │                      ├─► track.gain ─► bus ─► master ─► limiter ─► destination
+ 1 sortie / piste)  └► Signalsmith Stretch ┘     (mute/solo/   (fondus   (volume    (AudioWorklet,
+                       (tonalité ≠ 0)             fader dB)    transport) général)    plafond −1 dBFS)
 ```
 
 - `AudioContext({ latencyHint: 'playback' })` : tampon plus grand → moins de décrochages sur tablette.
-- Chaque chanson est **entièrement décodée en mémoire** (`decodeAudioData`) au clic. Lourd en RAM : ~6 pistes × 5 min stéréo float32 ≈ 600 Mo. Les buffers de la chanson précédente sont libérés.
-- Synchro : toutes les sources démarrent sur la même heure `ctx.currentTime + 0.05` → calage à l'échantillon près.
+- Chaque chanson est **entièrement décodée** (`decodeAudioData`) au clic, puis chaque piste est aussitôt **réduite en 16 bits** (`toPcm16`) et transférée au lecteur (`PLAYER_CODE`, un AudioWorklet avec une sortie par piste). Mémoire : ~1,15 Mo par seconde de musique pour 6 pistes à 48 kHz, soit ~410 Mo pour 6 min (contre ~830 Mo en AudioBuffer 32 bits). Décodage une piste à la fois sur téléphone et tablette (pas de pic, progression « piste n / 6 »), trois à la fois sur ordinateur. Le lecteur de la chanson précédente est libéré (`releaseSong`).
+- Synchro : un seul lecteur lit toutes les pistes au même échantillon, démarrage programmé sur l'horloge du contexte (`ctx.currentTime + 0.05`).
 - Position : horloge maison `offset + (ctx.currentTime − startAt)`, avec repli dans la boucle.
+- Safari : le contexte peut être `interrupted` (pas seulement `suspended`) après un passage en arrière-plan ; `play()` relance tout état autre que `running`.
 
 ### 4.1 Mute / solo / volume
 
@@ -99,14 +100,13 @@ Signalsmith Stretch ───┘     (mute/solo/   (fondus   (volume    (AudioWo
 
 ### 4.2 Fondus de transport (anti-clics)
 
-- `FADE = 12 ms`. `stopAll()` : rampe du `bus` vers 0, puis `source.stop(t + FADE)` — on ne coupe jamais en plein signal.
-- `play()` : `fadeIn(when)` rampe 0 → 1 sur 12 ms.
+- `FADE = 12 ms`. `stopAll()` : rampe du `bus` vers 0, puis arrêt du lecteur à `t + FADE` — on ne coupe jamais en plein signal.
+- `play()` : `fadeIn(when)` rampe 0 → 1 sur 12 ms (en transposé : à l'heure où le son ressort, `when + latence`).
 - Concerne lecture, pause, saut, changement de chanson, bascule direct ↔ transposé.
 
 ### 4.3 Boucle A-B
 
-- Mode direct : **pas** de `source.loop` natif (saut brutal = clic à chaque tour). À la place, passages successifs programmés 1 s à l'avance (`scheduleLoop`, `setInterval` 100 ms) ; chaque passage a son propre GainNode avec fondu enchaîné de 12 ms à la jonction.
-- Mode transposé : boucle native de Signalsmith (`loopStart` / `loopEnd`) — **non traitée pour les clics**, pas testée spécifiquement.
+- Gérée dans le lecteur, à l'échantillon : en arrivant en B, il repart de A avec un fondu enchaîné de 12 ms (la fin du passage s'éteint pendant que le début revient). Même boucle en direct et en transposé, puisque la transposition se fait après le lecteur.
 - Modifier la boucle pendant la lecture relance la lecture à la position courante.
 
 ### 4.4 Limiteur
@@ -120,8 +120,8 @@ Signalsmith Stretch ───┘     (mute/solo/   (fondus   (volume    (AudioWo
 
 - Librairie : `signalsmith-stretch@1.3.2` (MIT, WASM + AudioWorklet), chargée par CDN :
   `https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.js` (balise `<script async id="stretchLib">`). **Connexion internet requise** pour transposer ; la lecture normale fonctionne hors ligne.
-- Tonalité 0 → lecture directe (son intact). Tonalité ≠ 0 → un nœud Stretch par piste, créé à la demande (`prepareStretch`, état « préparation… »), canaux copiés et transférés au worklet via `addBuffers`.
-- Tous les nœuds sont programmés avec le même `outputTime` + `input` → synchro conservée. Changement de tonalité en cours de lecture : `schedule({ semitones })` sans coupure. Passage 0 ↔ ≠0 : arrêt + relance à la même position.
+- Tonalité 0 → lecture directe (son intact). Tonalité ≠ 0 → un nœud Stretch par piste, créé à la demande (`prepareStretch`, état « préparation… »), utilisé **en entrée live** : le lecteur lui envoie la piste (`route`), sans aucune copie des pistes (avant : `addBuffers` doublait la mémoire).
+- Le son ressort avec la latence des nœuds (`latency()`, ~0,12 s) : la tête de lecture et le fondu d'entrée en tiennent compte (`startAt = when + latence`). Tous les nœuds ont la même latence → synchro conservée. Changement de tonalité en cours de lecture : `schedule({ semitones })` sans coupure. Passage 0 ↔ ≠0 : arrêt + relance à la même position.
 - Sur écran tactile (`pointer: coarse`) : `configure({ preset: 'cheaper' })` pour limiter la charge CPU.
 - **Piège `file://`** : la librairie crée son worklet via une URL `Blob`, refusée par Chrome en `file://` (« Unable to load a worklet's module »). Contournement : on télécharge le script, on le convertit en `data:text/javascript;base64,…` et on le passe via `SignalsmithStretch.moduleUrl` avant le premier nœud. Repli : l'URL CDN directe.
 - Piège API : dans `schedule()`, l'heure de sortie se passe dans `outputTime` (la doc parle de `output`) ; le code passe les deux.
@@ -141,6 +141,11 @@ Signalsmith Stretch ───┘     (mute/solo/   (fondus   (volume    (AudioWo
 | Faders dB : +6 / 0 / −6 / −20 / −∞ | gains 1,995 / 1 / 0,501 / 0,1 / 0 ✅ |
 | Détection de clics (sinus 440 Hz enregistré en sortie pendant lecture, pause, saut, mute, fader, 8 tours de boucle) | ancienne version : 17 éch. en clic (saut max 0,64) ; nouvelle : 0 (saut max 0,027 < 0,031 admis) ✅ |
 | Import des vraies pistes de Daniela | 4 pistes, aucune erreur ✅ |
+| Lecteur 16 bits (10 nov. 2026, Chrome) : clics pendant lecture, pause, sauts, mute, 8 tours de boucle | 0 (saut max 0,0288 < 0,0331 admis) ✅ |
+| Idem transposé +2 (sinus 440 Hz) : continu puis 8 tours de boucle | 494,5 Hz mesurés, 0 clic ✅ |
+| Synchro : 4 pistes, deux en opposition de phase (somme attendue nulle), référence −1 dBFS | direct −84 dBFS, après saut −84, transposé −61, après changement de tonalité −51 (1 échantillon d'écart donnerait ~−28) ✅ |
+| Mémoire, morceau de 6 min en 6 pistes : Safari Mac / Safari iPad Pro 13 (simulateur iOS 27.2) | 873 → 477 Mo / 868 → 522 Mo ✅ |
+| Safari iPad (simulateur) : import serveur, chargement, lecture après toucher (contexte `interrupted` → `running`) | ✅ |
 
 Méthode de détection de clics : capter la sortie du limiteur (ScriptProcessor), compter les échantillons où `|x[n] − x[n−1]|` dépasse la pente max d'un sinus propre (`2π·440/sr·crête`, +15 %). Le test a été validé en le faisant tourner sur l'ancienne version, où il détecte bien les clics.
 
@@ -162,8 +167,8 @@ En conteneur, le CDN est inaccessible : intercepter `cdn.jsdelivr.net` avec `pag
 
 1. **Clics sur tablette — cause non confirmée.** Corrigés : écrêtage (limiteur), coupures sans fondu, boucle native. Non reproduit : décrochages CPU sur tablette (surtout en transposition, 6 nœuds Stretch). Diagnostic sur l'appareil : si **LIM** s'allume au moment des clics → c'était l'écrêtage ; si LIM reste éteint → CPU. Infos à obtenir : appareil, navigateur, chanson, en transposition ou non, en continu ou à l'interaction.
 2. **« Impossible de décoder ces fichiers : lastTime is not defined »** signalé à l'import. Non reproduit : le fichier présent déclarait bien la variable, et « is not defined » (V8/SpiderMonkey) indique un script **sans** la déclaration → probablement une autre copie / un onglet en cache. Par précaution, `lastTime` est maintenant déclaré avec l'état global (ligne ~134). À surveiller.
-3. Boucle en mode transposé : jonction gérée par Signalsmith, pas de fondu maison, non testée pour les clics.
-4. Mémoire : décodage complet en float32 ; risque sur tablette avec les chansons à 6 pistes.
+3. ~~Boucle en mode transposé non testée~~ : réglé (boucle du lecteur, 0 clic mesuré).
+4. Mémoire : pistes en 16 bits (~410 Mo d'audio pour 6 min en 6 pistes, ~520 Mo pour l'onglet). Un très long morceau (10-15 min) reste lourd pour un iPad de 3-4 Go. Le simulateur iOS n'applique pas les limites mémoire d'un vrai iPad : à confirmer sur l'appareil.
 5. Interaction tactile : Maj+glisser (boucle) impossible au doigt ; les boutons A/B restent utilisables. Clic sur les formes d'onde via les événements souris émulés.
 6. Sous 760 px de large, les faders de piste sont masqués (CSS).
 7. Transposition dépendante du CDN jsDelivr (pas de mode hors ligne).
@@ -179,6 +184,7 @@ Bouton **Nouveau morceau** : un morceau devient 6 pistes (Chant, Guitare, Basse,
 - **Séparation** : Demucs htdemucs_6s (Meta, MIT) en ONNX (`kramp/htdemucs-6s-webgpu-onnx`, 285 Mo, mis en cache après le premier téléchargement), ONNX Runtime Web 1.27 sur **WebGPU**, dans un worker. Tranches de 7,8 s avec 25 % de recouvrement (méthode de l'espace Hugging Face kramp/audio-split, MIT). Seulement sur ordinateur.
 - **Séparation sur le serveur** (téléphones, tablettes, ordinateurs sans WebGPU, ou carte graphique qui lâche en cours de route) : le relais sépare lui-même (Demucs sur processeur, ~1 min par minute de musique, un morceau à la fois) et renvoie 6 pistes AAC. Un fichier importé depuis un téléphone est envoyé au relais. `?serveur` dans l'adresse force ce mode depuis un ordinateur. Constat du 22 oct. 2026 : dans le navigateur, Android (Adreno, WebGPU) perd la carte graphique (« Device is lost ») et l'iPad recharge la page faute de mémoire.
 - **Bibliothèque** : IndexedDB (`mini-webdaw` : `songs` pour les métadonnées, `stems` pour les pistes). Pistes en **Opus 160 kb/s** (WebCodecs, conteneur Ogg écrit à la main), ou WAV 16 bits si le navigateur ne sait pas encoder puis relire l'Opus. Niveau RMS de chaque piste gardé (`rmsDb`).
+- **Piège Safari (constaté le 10 nov. 2026)** : quand la page passe en arrière-plan (autre app, écran verrouillé, onglet caché), ce qui arrive presque toujours pendant une séparation sur le serveur, Safari gèle la page et met IndexedDB en pause (simulateur iPad : rangement bloqué à 90 % jusqu'au retour) ou ferme la connexion (Safari Mac : `InvalidStateError: … The database connection is closing`, rangement en échec, rien n'apparaît). `idb()` rouvre maintenant la connexion et réessaie une fois (`InvalidStateError`, `UnknownError`). La séparation continue sur le serveur ; la page reprend le suivi au retour (pistes gardées 30 min par le relais).
 - **Déroulé** : un import à la fois (file d'attente), progression par étape (audio, modèle, tranche N/M + temps restant, rangement), Annuler, écran maintenu allumé (Wake Lock). Ouverture automatique à la fin, sauf si un autre morceau joue (notification).
 
 Mesures (M3 Pro, Chrome, 21-22 oct. 2026) : morceau de 2 min 42 importé en ~1 min 10 ; 6 pistes Opus = 18,7 Mo ; réouverture après rechargement en 0,45 s.
@@ -190,9 +196,9 @@ Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides r
 | Zone | Fonctions / constantes |
 |---|---|
 | Constantes | `FADE`, `CEIL_DB`, `DB_OFF`, `PITCH_MAX`, `TOUCH`, `ORDER`, `COLORS` |
-| Chaîne audio | `audioCtx`, `initLimiter`, `LIMITER_CODE`, `fadeIn`, `fadeOut` |
-| Chargement | `$('#dir').onchange`, `loadSong`, `trackLabel`, `rank` |
-| Rendu | `renderSong`, `renderSongList`, `drawWaves`, `computePeaks`, `drawRuler`, `tick` |
+| Chaîne audio | `audioCtx`, `initLimiter`, `LIMITER_CODE`, `PLAYER_CODE`, `workletUrl`, `fadeIn`, `fadeOut` |
+| Chargement | `$('#dir').onchange`, `loadSong`, `toPcm16`, `releaseSong`, `trackLabel`, `rank` |
+| Rendu | `renderSong`, `renderSongList`, `drawWaves`, `waveBins`, `drawRuler`, `tick` |
 | Relais | `parseInvite`, `setRelay`, `relayCall`, `ensureSession`, `turnstileToken`, `checkRelay` |
 | Séparation | `#sepWorker` (worker), `separate`, `separateHere`, `separateOnServer`, `browserCanSeparate`, `decode44k`, `webgpuOk` |
 | Encodage | `pickEncoder`, `encodeStem`, `encodeOpus48`, `oggOpus`, `oggPage`, `toWav` |
@@ -200,7 +206,7 @@ Pas encore fait : renommer, export ZIP, capture d'onglet, pistes presque vides r
 | Imports | `enqueue`, `runJobs`, `runJob`, `downloadAudio`, `cancelJob` |
 | Panneau | `openPanel`, `renderPanel`, `runSearch`, `runInfo`, `renderResults`, `renderJobs`, `renderFooter` |
 | Mixage | `applyMix`, `toggleSolo`, `resetMix`, `dbToGain`, `fmtDb` |
-| Transport | `play`, `playStretch`, `startSource`, `scheduleLoop`, `stopAll`, `pause`, `seek`, `position` |
+| Transport | `play`, `playStretch`, `startPlayer`, `stopAll`, `pause`, `seek`, `position` |
 | Boucle | `setMarker`, `toggleLoop`, `loopValid`, `updateLoopUI` |
-| Transposition | `prepareStretch`, `releaseStretch`, `setSemis`, `updatePitchUI` |
+| Transposition | `prepareStretch`, `releaseStretch`, `route`, `setSemis`, `updatePitchUI` |
 | Entrées | `attachLaneMouse`, écouteur `keydown` |
