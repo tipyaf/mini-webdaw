@@ -153,6 +153,11 @@
     .card img { width: 96px; }
     .card .acts { grid-column: 1 / -1; }
   }
+  .update-banner { position: fixed; bottom: 16px; right: 16px; z-index: 50; background: var(--panel2);
+    border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; display: flex; gap: 10px;
+    align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.4); font-size: 13px; }
+  .update-banner button { background: var(--accent); color: #1b1404; border: 0; border-radius: 6px;
+    padding: 6px 10px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -185,6 +190,11 @@
 </section>
 <div id="ts"></div>
 
+<div class="update-banner" id="updateBanner" hidden>
+  <span>Nouvelle version disponible</span>
+  <button id="updateReload">Recharger</button>
+</div>
+
 <!-- Signalsmith Stretch (MIT) : transposition sans changer le tempo -->
 <script async id="stretchLib" src="https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.js"></script>
 <script>
@@ -198,7 +208,7 @@ const $ = s => document.querySelector(s);
 let ctx, master;
 let songs = new Map();       // nom du dossier -> [File]
 let cur = null;              // chanson chargée ; cur.key = « d:<dossier> » ou « l:<id bibliothèque> »
-let playing = false, startAt = 0, offset = 0, sources = [];
+let playing = false, startAt = 0, offset = 0;
 let loop = { a: null, b: null, on: false };
 let loadToken = 0;
 let semis = 0, starting = false, masterDb = 0, lastTime = "";
@@ -268,6 +278,79 @@ class Limiter extends AudioWorkletProcessor {
 }
 registerProcessor('pk-limiter', Limiter);`;
 
+// Lecteur multipiste, exécuté sur le thread audio. Les pistes y sont gardées en 16 bits : deux fois moins
+// de mémoire que des AudioBuffer (32 bits flottants). Un long morceau en 6 pistes saturait Safari sur iPad.
+// Messages (temps en secondes, horloge du contexte) : { tracks: [[gauche, droite], …] },
+// { play: { at, from, a?, b? } } (a/b = boucle, fondu enchaîné au raccord), { stop: t }, { drop: true }.
+const PLAYER_CODE = `
+class Player extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.tracks = [];
+    this.cur = null;
+    this.next = null;
+    this.stopAt = -1;
+    this.dropped = false;
+    this.fade = Math.max(1, Math.round(sampleRate * ${FADE}));
+    this.alloc(128);
+    this.port.onmessage = ({ data: m }) => {
+      const fr = s => Math.round(s * sampleRate);
+      if (m.tracks) this.tracks = m.tracks;
+      if (m.stop != null) { this.next = null; this.stopAt = fr(m.stop); }
+      if (m.play) {
+        const at = fr(m.play.at);
+        if (this.stopAt >= at) this.stopAt = -1;
+        this.next = { at, pos: fr(m.play.from), a: m.play.a == null ? -1 : fr(m.play.a), b: m.play.b == null ? -1 : fr(m.play.b) };
+      }
+      if (m.drop) { this.tracks = []; this.cur = this.next = null; this.dropped = true; }
+    };
+  }
+  alloc(n) {
+    this.p = new Int32Array(n); this.g = new Float32Array(n);
+    this.q = new Int32Array(n); this.h = new Float32Array(n);
+  }
+  process(inputs, outputs) {
+    if (this.dropped) return false;
+    const n = outputs[0][0].length;
+    if (this.p.length < n) this.alloc(n);
+    const { p, g, q, h, fade } = this;
+    let c = this.cur, active = false;
+    // Plan du bloc : position lue (p) et son gain (g), plus la fin du passage précédent (q, h) pendant un raccord de boucle.
+    for (let k = 0; k < n; k++) {
+      const f = currentFrame + k;
+      if (this.stopAt >= 0 && f >= this.stopAt) { c = null; this.stopAt = -1; }
+      if (this.next && f >= this.next.at) {
+        const x = this.next;
+        c = { pos: x.pos, a: x.a, b: x.b, fin: 0, tail: 0, left: 0 };
+        this.next = null;
+      }
+      if (!c) { p[k] = -1; q[k] = -1; continue; }
+      active = true;
+      if (c.a >= 0 && c.b > c.a && c.pos >= c.b) { c.tail = c.pos; c.left = fade; c.pos = c.a; c.fin = fade; }
+      p[k] = c.pos++;
+      g[k] = c.fin > 0 ? 1 - c.fin-- / fade : 1;
+      if (c.left > 0) { q[k] = c.tail++; h[k] = c.left-- / fade; } else q[k] = -1;
+    }
+    this.cur = c;
+    for (let t = 0; t < outputs.length; t++) {
+      const out = outputs[t], tr = this.tracks[t], L = out[0], R = out[1] || out[0];
+      if (!tr || !active) { L.fill(0); R.fill(0); continue; }
+      const sl = tr[0], sr = tr[1], len = sl.length;
+      for (let k = 0; k < n; k++) {
+        let l = 0, r = 0, i = p[k];
+        if (i >= 0 && i < len) { l = sl[i] * g[k]; r = sr[i] * g[k]; }
+        i = q[k];
+        if (i >= 0 && i < len) { l += sl[i] * h[k]; r += sr[i] * h[k]; }
+        L[k] = l / 32768; R[k] = r / 32768;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('mwd-player', Player);`;
+const workletUrl = code => 'data:text/javascript;base64,' + btoa(unescape(encodeURIComponent(code)));
+let playerReady = null;
+
 function audioCtx() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -278,13 +361,16 @@ function audioCtx() {
     bus.connect(master);
     master.connect(ctx.destination);
     limiterReady = initLimiter();
+    playerReady = ctx.audioWorklet
+      ? ctx.audioWorklet.addModule(workletUrl(PLAYER_CODE))
+      : Promise.reject(new Error('ce navigateur est trop ancien (AudioWorklet absent).'));
+    playerReady.catch(() => {});
   }
   return ctx;
 }
 async function initLimiter() {
   try {
-    const url = 'data:text/javascript;base64,' + btoa(unescape(encodeURIComponent(LIMITER_CODE)));
-    await ctx.audioWorklet.addModule(url);
+    await ctx.audioWorklet.addModule(workletUrl(LIMITER_CODE));
     limiter = new AudioWorkletNode(ctx, 'pk-limiter', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
     limiter.port.onmessage = e => {
       const [pk, gr] = e.data;
@@ -383,7 +469,7 @@ async function loadSong(key) {
   const token = ++loadToken;
   stopAll();
   playing = false;
-  if (cur) releaseStretch(cur);
+  if (cur) releaseSong(cur);
   offset = 0;
   loop = { a: null, b: null, on: false };
   semis = semisBySong.get(key) || 0;
@@ -395,21 +481,31 @@ async function loadSong(key) {
   const ac = audioCtx();
   await limiterReady;
   try {
+    await playerReady;
     const all = meta ? await libraryFiles(meta) : songs.get(name);
     if (token !== loadToken) return;
     const files = [...all].sort((a, b) => rank(trackLabel(a)) - rank(trackLabel(b)) || a.name.localeCompare(b.name));
-    const buffers = await Promise.all(files.map(async f => ac.decodeAudioData(await f.arrayBuffer())));
-    if (token !== loadToken) return;
+    // Chaque piste décodée est aussitôt réduite en 16 bits. Sur téléphone et tablette, une à la fois :
+    // pas de pic mémoire ; sur ordinateur, trois à la fois pour aller plus vite.
+    const pcm = [], width = MOBILE ? 1 : 3;
+    for (let i = 0; i < files.length; i += width) {
+      const part = await Promise.all(files.slice(i, i + width).map(async f => toPcm16(await ac.decodeAudioData(await f.arrayBuffer()))));
+      if (token !== loadToken) return;
+      pcm.push(...part);
+    }
     let fb = 0;
     cur.tracks = files.map((f, i) => {
       const label = trackLabel(f);
       const key = label.toLowerCase();
       const gain = ac.createGain();
       gain.connect(bus);
-      return { label, file: f.name, buffer: buffers[i], gain, db: 0, mute: false, solo: false,
-        color: COLORS[key] || FALLBACK[fb++ % FALLBACK.length], peaks: null };
+      return { label, file: f.name, len: pcm[i].len, peaks: pcm[i].peaks, wave: null, gain, db: 0, mute: false, solo: false,
+        color: COLORS[key] || FALLBACK[fb++ % FALLBACK.length] };
     });
-    cur.duration = Math.max(...buffers.map(b => b.duration));
+    cur.duration = Math.max(...pcm.map(d => d.len)) / ac.sampleRate;
+    cur.player = new AudioWorkletNode(ac, 'mwd-player', { numberOfInputs: 0, numberOfOutputs: files.length, outputChannelCount: files.map(() => 2) });
+    cur.player.port.postMessage({ tracks: pcm.map(d => d.ch) }, [...new Set(pcm.flatMap(d => d.ch.map(c => c.buffer)))]);
+    route(cur);
     renderSong();
     if (semis !== 0) prepareStretch();
   } catch (err) {
@@ -516,17 +612,38 @@ function drawRuler() {
   r.innerHTML = html;
 }
 
-function computePeaks(buffer, n) {
-  const chs = [...Array(buffer.numberOfChannels).keys()].map(c => buffer.getChannelData(c));
-  const len = chs[0].length, per = Math.max(1, Math.floor(len / n)), out = new Float32Array(n);
-  let globalMax = 0;
-  for (let i = 0; i < n; i++) {
-    let max = 0;
-    const start = i * per, end = Math.min(len, start + per);
-    for (const ch of chs) for (let j = start; j < end; j += 4) { const v = Math.abs(ch[j]); if (v > max) max = v; }
-    out[i] = max; if (max > globalMax) globalMax = max;
+// Piste décodée → 16 bits (gauche, droite) + crêtes pour la forme d'onde, calculées avant l'envoi au lecteur.
+const PEAK_BINS = 4096;
+function toPcm16(buffer) {
+  const len = buffer.length, per = Math.max(1, Math.ceil(len / PEAK_BINS));
+  const peaks = new Float32Array(Math.ceil(len / per) || 1), ch = [];
+  for (let c = 0; c < Math.min(2, buffer.numberOfChannels); c++) {
+    const src = buffer.getChannelData(c), out = new Int16Array(len);
+    for (let b = 0, i = 0; i < len; b++) {
+      let m = peaks[b];
+      for (const end = Math.min(len, i + per); i < end; i++) {
+        const v = src[i], a = v < 0 ? -v : v;
+        out[i] = v >= 1 ? 32767 : v <= -1 ? -32767 : v * 32767;
+        if (a > m) m = a;
+      }
+      peaks[b] = m;
+    }
+    ch.push(out);
   }
-  return { data: out, max: globalMax || 1 };
+  if (ch.length === 1) ch.push(ch[0]);
+  let max = 0;
+  for (const v of peaks) if (v > max) max = v;
+  return { ch, len, peaks: { data: peaks, max: max || 1 } };
+}
+// Crêtes regroupées à la largeur affichée.
+function waveBins(peaks, bins) {
+  const src = peaks.data, out = new Float32Array(bins), r = src.length / bins;
+  for (let x = 0; x < bins; x++) {
+    let m = 0;
+    for (let j = Math.floor(x * r), e = Math.min(src.length, Math.max(j + 1, Math.ceil((x + 1) * r))); j < e; j++) if (src[j] > m) m = src[j];
+    out[x] = m;
+  }
+  return out;
 }
 
 function drawWaves() {
@@ -541,13 +658,13 @@ function drawWaves() {
     const c = cv.getContext('2d');
     c.scale(dpr, dpr);
     const bins = Math.floor(w);
-    if (!tr.peaks || tr.peaks.data.length !== bins) tr.peaks = computePeaks(tr.buffer, bins);
+    if (!tr.wave || tr.wave.length !== bins) tr.wave = waveBins(tr.peaks, bins);
     // largeur relative si la piste est plus courte que la chanson
-    const scale = tr.buffer.duration / cur.duration;
+    const scale = tr.len / ctx.sampleRate / cur.duration;
     c.fillStyle = tr.color;
     const mid = h / 2, norm = 0.9 / Math.max(tr.peaks.max, 0.05);
     for (let x = 0; x < bins; x++) {
-      const v = tr.peaks.data[x] * norm * mid;
+      const v = tr.wave[x] * norm * mid;
       c.fillRect(x * scale, mid - v, Math.max(1, scale), Math.max(1, v * 2));
     }
   });
@@ -614,16 +731,13 @@ function prepareStretch() {
       } catch (e) { SignalsmithStretch.moduleUrl = src; }
     }
     const ac = audioCtx();
+    // Transposition à la volée : chaque nœud reçoit la piste jouée par le lecteur (aucune copie des pistes en mémoire).
     for (const t of song.tracks) {
       const node = await SignalsmithStretch(ac);
       t.stretch = node;
       if (song !== cur) break;
       // sur tablette / téléphone : réglage plus léger pour éviter les décrochages du processeur
       if (TOUCH) await node.configure({ preset: 'cheaper' });
-      const b = t.buffer;
-      const c0 = b.getChannelData(0).slice();
-      const c1 = (b.numberOfChannels > 1 ? b.getChannelData(1) : b.getChannelData(0)).slice();
-      await node.addBuffers([c0, c1], [c0.buffer, c1.buffer]);
       node.connect(t.gain);
     }
     if (song !== cur) { releaseStretch(song); throw new Error('annulé'); }
@@ -637,11 +751,33 @@ function prepareStretch() {
 function releaseStretch(song) {
   song.tracks.forEach(t => {
     if (!t.stretch) return;
-    try { t.stretch.stop(); t.stretch.dropBuffers(); t.stretch.disconnect(); } catch (e) {}
+    try { t.stretch.stop(); t.stretch.disconnect(); } catch (e) {}
     t.stretch = null;
   });
   song.stretchReady = null;
+  song.via = null;
 }
+// Lecture directe à 0 demi-ton (son intact) ; sinon chaque piste passe par son nœud de transposition.
+function route(song) {
+  const p = song.player;
+  if (!p) return;
+  const viaStretch = semis !== 0 && song.tracks.every(t => t.stretch);
+  if (song.via === viaStretch) return;
+  p.disconnect();
+  song.tracks.forEach((t, i) => p.connect(viaStretch ? t.stretch : t.gain, i, 0));
+  song.via = viaStretch;
+}
+function releaseSong(song) {
+  releaseStretch(song);
+  if (song.player) {
+    song.player.port.postMessage({ drop: true });
+    song.player.disconnect();
+    song.player = null;
+  }
+  song.tracks.forEach(t => t.gain.disconnect());
+}
+const startPlayer = (song, when) => song.player.port.postMessage({
+  play: { at: when, from: offset, ...(loop.on && loopValid() ? { a: loop.a, b: loop.b } : {}) } });
 async function setSemis(v) {
   if (!cur || !cur.tracks.length) return;
   v = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, v));
@@ -675,52 +811,18 @@ function setPitchStatus(msg, err) {
 async function play() {
   if (!cur || !cur.tracks.length || starting) return;
   const ac = audioCtx();
-  if (ac.state === 'suspended') ac.resume();
+  // Safari met le contexte en « interrupted » (pas seulement « suspended ») après un passage en arrière-plan.
+  if (ac.state !== 'running') ac.resume().catch(() => {});
   if (offset >= cur.duration - 0.01) offset = 0;
   if (loop.on && loopValid() && (offset < loop.a || offset >= loop.b)) offset = loop.a;
   if (semis !== 0) return playStretch();
+  route(cur);
   const when = ac.currentTime + 0.05;
   fadeIn(when);
   startAt = when;
   playing = true;
-  if (loop.on && loopValid()) {
-    // boucle : passages successifs avec fondu enchaîné, programmés un peu en avance
-    loopSched = { next: when, from: offset, first: true };
-    scheduleLoop();
-    loopTimer = setInterval(scheduleLoop, 100);
-  } else {
-    cur.tracks.forEach(t => startSource(t, when, offset));
-  }
+  startPlayer(cur, when);
   updatePlayBtn();
-}
-let loopSched = null, loopTimer = null;
-function startSource(t, when, from, dur, xfadeIn) {
-  if (from >= t.buffer.duration) return;
-  const s = ctx.createBufferSource();
-  s.buffer = t.buffer;
-  let out = s;
-  if (dur != null) {
-    const g = ctx.createGain();
-    s.connect(g); out = g;
-    if (xfadeIn) { g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(1, when + FADE); }
-    const end = when + dur;
-    g.gain.setValueAtTime(1, end);
-    g.gain.linearRampToValueAtTime(0, end + FADE);
-    s.start(when, from, dur + FADE);
-  } else {
-    s.start(when, from);
-  }
-  out.connect(t.gain);
-  s.onended = () => { out.disconnect(); s.disconnect(); const i = sources.indexOf(s); if (i >= 0) sources.splice(i, 1); };
-  sources.push(s);
-}
-function scheduleLoop() {
-  if (!playing || !loopSched || !cur) return;
-  while (loopSched.next < ctx.currentTime + 1) {
-    const from = loopSched.from, dur = loop.b - from;
-    cur.tracks.forEach(t => startSource(t, loopSched.next, from, dur, !loopSched.first));
-    loopSched.next += dur; loopSched.from = loop.a; loopSched.first = false;
-  }
 }
 async function playStretch() {
   const song = cur;
@@ -729,22 +831,20 @@ async function playStretch() {
   catch (e) { starting = false; updatePlayBtn(); return; }
   starting = false;
   if (song !== cur || playing) return;
-  const when = ctx.currentTime + song.latency + 0.05;
-  const lp = loop.on && loopValid();
-  fadeIn(when);
-  song.tracks.forEach(t => t.stretch.schedule({
-    outputTime: when, output: when, active: true, input: offset, rate: 1, semitones: semis,
-    loopStart: lp ? loop.a : 0, loopEnd: lp ? loop.b : 0 }));
-  startAt = when;
+  route(song);
+  // Le son transposé ressort des nœuds avec leur latence : fondu et affichage décalés d'autant.
+  const when = ctx.currentTime + 0.05, heard = when + song.latency;
+  song.tracks.forEach(t => t.stretch.schedule({ outputTime: when, output: when, active: true, rate: 1, semitones: semis }));
+  startPlayer(song, when);
+  fadeIn(heard);
+  startAt = heard;
   playing = true;
   updatePlayBtn();
 }
 function stopAll() {
-  clearInterval(loopTimer); loopTimer = null; loopSched = null;
   if (!ctx) return;
   const end = fadeOut();   // on coupe à la fin du fondu, jamais en plein signal
-  sources.forEach(s => { try { s.stop(end); } catch (e) {} });
-  sources = [];
+  if (cur && cur.player) cur.player.port.postMessage({ stop: end });
   if (cur) cur.tracks.forEach(t => t.stretch && t.stretch.stop(end));
 }
 function pause() { offset = position(); stopAll(); playing = false; updatePlayBtn(); }
@@ -1269,23 +1369,43 @@ function rmsDb(l, r) {
 }
 
 // ---------- Bibliothèque (IndexedDB : métadonnées + une Blob par piste) ----------
+// Safari ferme la connexion quand la page passe en arrière-plan (autre app, écran verrouillé, onglet caché),
+// par exemple pendant une séparation sur le serveur : on en rouvre une au lieu d'échouer.
 let dbPromise = null;
 function openDb() {
-  return dbPromise ||= new Promise((ok, ko) => {
+  const p = dbPromise ||= new Promise((ok, ko) => {
     const r = indexedDB.open('mini-webdaw', 1);
     r.onupgradeneeded = () => { r.result.createObjectStore('songs', { keyPath: 'id' }); r.result.createObjectStore('stems'); };
-    r.onsuccess = () => ok(r.result);
+    r.onsuccess = () => {
+      const d = r.result;
+      d.onclose = () => { if (dbPromise === p) dbPromise = null; };
+      d.onversionchange = () => { d.close(); if (dbPromise === p) dbPromise = null; };
+      ok(d);
+    };
     r.onerror = () => { dbPromise = null; ko(r.error); };
   });
+  return p;
 }
-async function idb(store, mode, fn) {
-  const d = await openDb();
+const DB_LOST = /^(InvalidStateError|UnknownError)$/;
+async function idb(store, mode, fn, retried = false) {
+  const p = openDb(), d = await p;
+  const retry = e => {
+    if (retried || !e || !DB_LOST.test(e.name)) throw e;
+    if (dbPromise === p) dbPromise = null;
+    return idb(store, mode, fn, true);
+  };
+  let tx;
+  try { tx = d.transaction(store, mode); } catch (e) { return retry(e); }
   return new Promise((ok, ko) => {
-    const tx = d.transaction(store, mode);
+    let settled = false;
     const req = fn(tx.objectStore(store));
-    tx.oncomplete = () => ok(req && req.result);
-    tx.onerror = () => ko(tx.error);
-    tx.onabort = () => ko(tx.error);
+    tx.oncomplete = () => { settled = true; ok(req && req.result); };
+    // « error » puis « abort » arrivent tous les deux : une seule réponse.
+    tx.onerror = tx.onabort = () => {
+      if (settled) return;
+      settled = true;
+      try { ok(retry(tx.error)); } catch (e) { ko(e); }
+    };
   });
 }
 const stemKey = (id, i) => `${id}/${i}`;
@@ -1305,7 +1425,7 @@ async function deleteLibrarySong(id) {
   try { await removeFromDb(id); } catch (e) { toast('Suppression impossible : ' + e.message); }
   library = library.filter(m => m.id !== id);
   if (cur && cur.key === 'l:' + id) {
-    stopAll(); playing = false; releaseStretch(cur); cur = null;
+    stopAll(); playing = false; releaseSong(cur); cur = null;
     $('#main').innerHTML = '<div class="empty"><h2>Morceau supprimé</h2><p>Choisis un autre morceau dans la liste.</p></div>';
   }
   renderSongList();
@@ -1680,6 +1800,32 @@ function toast(text, action, fn) {
 
 // Prévenir avant de fermer l'onglet pendant un import.
 window.addEventListener('beforeunload', e => { if (jobs.some(j => j.state === 'running')) e.preventDefault(); });
+
+// Détecte une nouvelle version déployée via l'ETag/Last-Modified du serveur (pas de
+// version à bumper à la main) et propose un rechargement qui contourne le cache du
+// navigateur/CDN via une URL avec query-string inédite.
+(function () {
+  const banner = document.getElementById('updateBanner');
+  let baseline = null;
+  function signature(res) { return res.headers.get('etag') || res.headers.get('last-modified'); }
+  async function checkForUpdate() {
+    try {
+      const res = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' });
+      const sig = signature(res);
+      if (!sig) return; // serveur sans ETag/Last-Modified (ex. file://) : rien à comparer
+      if (baseline === null) { baseline = sig; return; }
+      if (sig !== baseline) banner.hidden = false;
+    } catch (e) { /* hors-ligne : rien à faire */ }
+  }
+  document.getElementById('updateReload').onclick = () => {
+    location.href = location.pathname + '?v=' + Date.now();
+  };
+  if (location.protocol !== 'file:') {
+    checkForUpdate();
+    setInterval(checkForUpdate, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+  }
+})();
 </script>
 </body>
 </html>

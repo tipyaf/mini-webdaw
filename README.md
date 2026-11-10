@@ -17,3 +17,10 @@ Documentation complète : [DOC.md](DOC.md).
 ## Déploiement
 
 GitHub Pages publie la branche `main` (racine) : chaque push sur `main` met la page à jour (~1 min).
+
+Le cache navigateur peut quand même garder une vieille version ouverte. La page compare
+périodiquement (et au retour sur l'onglet) l'ETag/Last-Modified du serveur à celui chargé au
+démarrage ; en cas de changement elle affiche un bouton « Recharger » qui contourne le cache
+via une URL inédite. Rien à bumper à la main — mais une page déjà ouverte **avant** ce
+mécanisme ne le détecte évidemment pas elle-même : un rechargement forcé (Ctrl/Cmd+Maj+R)
+reste nécessaire une seule fois pour l'attraper.
