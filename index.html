@@ -1046,8 +1046,8 @@ self.onmessage = async (e) => {
 // =====================================================================
 // Nouveau morceau : relais (recherche + audio YouTube), séparation en
 // 6 pistes dans le navigateur, bibliothèque locale (IndexedDB).
-// L'adresse du relais n'est jamais dans ce fichier : elle vient du lien
-// d'invitation (#relais=…&cle=…) et reste dans ce navigateur.
+// Le relais répond sur la même adresse que la page (/api) : seule la clé
+// vient du lien d'invitation (#cle=…) et reste dans ce navigateur.
 // =====================================================================
 const SOURCE_LABEL = { youtube: 'YouTube', file: 'Fichier', tab: 'Onglet' };
 const STEM_NAMES = ['Batteries', 'Basse', 'Autre', 'Chant', 'Guitare', 'Piano']; // ordre de sortie du modèle
@@ -1075,25 +1075,60 @@ let jobs = [];             // imports en cours ou en échec
 let confirmDelete = null;  // id du morceau dont la suppression attend confirmation
 
 // ---------- Relais ----------
-const RELAY_STORE = 'mwd.relais';
+const CLE_STORE = 'mwd.cle';
+const RELAY_STORE = 'mwd.relais';      // ancien format {url, key} : repris une fois, puis supprimé (sauf copie GitHub Pages)
+const OLD_ORIGIN = 'https://tipyaf.github.io';
+const LEGACY_HOST = location.origin === OLD_ORIGIN;                                  // copie figée : adresse du relais dans le lien
+const LOCAL_DEV = location.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const SAME_ORIGIN = location.protocol === 'https:' && !LEGACY_HOST;                  // relais = cette adresse, sous /api
 const relay = { url: '', key: '', session: '', sessionExp: 0, state: 'none', error: '', separation: false };
 
-function parseInvite(text) {
+const relayHostOk = u => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(u);
+// Lien (#cle=… ou ancien #relais=…&cle=…), fragment, « cle=… » ou clé nue (bare : seulement dans le champ de collage).
+function parseInvite(text, bare) {
   const s = String(text || '').trim();
+  if (bare && /^[^\s#?&=\/:]{6,}$/.test(s)) return { key: s, url: '' };
   const p = new URLSearchParams(s.includes('#') ? s.slice(s.indexOf('#') + 1) : s);
   const url = (p.get('relais') || '').replace(/\/+$/, ''), key = p.get('cle') || '';
-  const okUrl = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url);
-  return okUrl && key ? { url, key } : null;
+  return key ? { key, url: relayHostOk(url) ? url : '' } : null;
 }
-function setRelay(v) {
-  Object.assign(relay, { url: v ? v.url : '', key: v ? v.key : '', session: '', sessionExp: 0, state: v ? 'unknown' : 'none', error: '' });
-  try { v ? localStorage.setItem(RELAY_STORE, JSON.stringify(v)) : localStorage.removeItem(RELAY_STORE); } catch (e) {}
+// Adresse du relais : même origine en https ; en local, `relais=` s'il existe ; copie GitHub Pages : celle du lien ou la mémorisée.
+function relayUrlFor(v) {
+  if (SAME_ORIGIN) return location.origin;
+  if (LOCAL_DEV) return v.url || location.origin;
+  if (v.url) return v.url;
+  try { const o = JSON.parse(localStorage.getItem(RELAY_STORE)); if (o && relayHostOk(o.url)) return o.url; } catch (e) {}
+  return '';
 }
+// Le lien reste dans la barre d'adresse (favori) : toujours au format canonique #cle=…
+function syncHash(key) {
+  if (LEGACY_HOST || moveMode) return;
+  const h = key ? '#cle=' + encodeURIComponent(key) : '';
+  if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
+}
+function setRelay(v, hash) {
+  const url = v ? relayUrlFor(v) : '';
+  if (v && !url) return false;
+  Object.assign(relay, { url, key: v ? v.key : '', session: '', sessionExp: 0, state: v ? 'unknown' : 'none', error: '' });
+  try {
+    if (LEGACY_HOST) v ? localStorage.setItem(RELAY_STORE, JSON.stringify({ url, key: v.key })) : localStorage.removeItem(RELAY_STORE);
+    else { v ? localStorage.setItem(CLE_STORE, v.key) : localStorage.removeItem(CLE_STORE); localStorage.removeItem(RELAY_STORE); }
+  } catch (e) {}
+  if (!v) syncHash('');
+  else if (hash && !(LOCAL_DEV && v.url)) syncHash(v.key);
+  return true;
+}
+// Adresse de la page : #demenagement = réception de la bibliothèque (voir plus bas).
+let moveMode = new URLSearchParams(location.hash.slice(1)).has('demenagement');
 (() => {
-  // Le lien d'invitation reste dans la barre d'adresse : il sert de favori et redonne l'accès à chaque ouverture.
   const inv = parseInvite(location.hash);
-  if (inv) return setRelay(inv);
-  try { const v = JSON.parse(localStorage.getItem(RELAY_STORE)); if (v && parseInvite(`relais=${v.url}&cle=${v.key}`)) setRelay(v); } catch (e) {}
+  if (inv && setRelay(inv, true)) return;
+  try {
+    if (LEGACY_HOST) { const v = JSON.parse(localStorage.getItem(RELAY_STORE)); if (v && relayHostOk(v.url) && v.key) setRelay({ key: v.key, url: v.url }); return; }
+    let key = localStorage.getItem(CLE_STORE);
+    if (!key) { const old = JSON.parse(localStorage.getItem(RELAY_STORE)); key = old && old.key || ''; }   // reprise unique de l'ancien format
+    if (key) setRelay({ key, url: '' }); else localStorage.removeItem(RELAY_STORE);
+  } catch (e) {}
 })();
 
 class RelayError extends Error {
@@ -1434,12 +1469,109 @@ async function deleteLibrarySong(id) {
   renderSongList();
   renderFooter();
 }
-(async () => {
+const libraryReady = (async () => {
   try {
     library = (await idb('songs', 'readonly', s => s.getAll())).sort((a, b) => b.createdAt - a.createdAt);
     renderSongList();
   } catch (e) { console.warn('Bibliothèque indisponible', e); }
 })();
+
+// ---------- Déménagement : réception de la bibliothèque envoyée par l'ancienne adresse ----------
+// Protocole postMessage fixé dans docs/specs/01-phase1-migration.md (B3). L'ancienne page n'est jamais modifiée.
+// L'origine émettrice est tipyaf.github.io ; en local seulement, ?emetteur=http://localhost:PORT la remplace (tests).
+const MOVE_ORIGIN = (() => {
+  const o = LOCAL_DEV && new URLSearchParams(location.search).get('emetteur');
+  return o && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) ? o : OLD_ORIGIN;
+})();
+const MOVE_MAX_BLOB = 300 * 1048576, MOVE_MAX_SONGS = 5000;
+const move = { active: moveMode && !LEGACY_HOST, ok: 0, skipped: 0, chain: Promise.resolve(), timer: 0 };
+
+function moveSay(text, close) {
+  let b = $('#moveBanner');
+  if (!b) { b = document.createElement('div'); b.className = 'update-banner'; b.id = 'moveBanner'; document.body.appendChild(b); }
+  b.innerHTML = `<span>${esc(text)}</span>${close ? '<button>Fermer</button>' : ''}`;
+  if (close) b.querySelector('button').onclick = () => b.remove();
+}
+function moveFail(why) {
+  clearTimeout(move.timer);
+  move.active = false;
+  console.warn('Déménagement', why);
+  const e = why instanceof Error ? (why.name === 'QuotaExceededError' ? MSG.storage : why.message) : why;
+  moveSay(`Transfert interrompu : ${e} Ta bibliothèque de l'ancienne adresse n'a pas été touchée.`, true);
+}
+
+const isStr = (v, max) => typeof v === 'string' && v.length <= max;
+const isNum = (v, min, max) => typeof v === 'number' && isFinite(v) && v >= min && v <= max;
+// Vérifie la forme et la taille d'un morceau reçu ; ne garde que les champs connus. null si invalide.
+function cleanMoveSong(d) {
+  const x = d.meta, t = d.tracks;
+  if (!x || typeof x !== 'object' || !Array.isArray(x.stems) || !Array.isArray(t)) return null;
+  if (typeof x.id !== 'string' || !/^[\w-]{1,64}$/.test(x.id) || !isStr(x.title, 300)) return null;
+  if (!(x.source == null || isStr(x.source, 20)) || !(x.youtubeId == null || isStr(x.youtubeId, 32)) || !(x.channel == null || isStr(x.channel, 300))) return null;
+  if (!(x.duration == null || isNum(x.duration, 0, 172800)) || !isNum(x.createdAt, 0, 4e12)) return null;
+  if (x.stems.length < 1 || x.stems.length > 16 || t.length !== x.stems.length) return null;
+  const stems = [];
+  for (let i = 0; i < x.stems.length; i++) {
+    const st = x.stems[i], tr = t[i];
+    if (!st || !tr || !isStr(st.name, 60) || !isStr(st.file, 300) || !(st.rmsDb == null || isNum(st.rmsDb, -400, 100))) return null;
+    if (tr.name !== st.name || !(tr.blob instanceof Blob) || !(tr.blob.size > 0 && tr.blob.size <= MOVE_MAX_BLOB)) return null;
+    if (tr.blob.type && !/^audio\/[\w.+-]{1,40}$/.test(tr.blob.type)) return null;
+    stems.push({ name: st.name, file: st.file, rmsDb: st.rmsDb });
+  }
+  return {
+    meta: { id: x.id, title: x.title, source: x.source, youtubeId: x.youtubeId, channel: x.channel, duration: x.duration, createdAt: x.createdAt, stems },
+    blobs: t.map(tr => tr.blob),
+  };
+}
+// Écrit un morceau (pistes puis métadonnées, comme runJob). false si l'id existe déjà : on ne touche à rien.
+async function moveStore({ meta, blobs }) {
+  await libraryReady;
+  if (await idb('songs', 'readonly', s => s.get(meta.id))) return false;
+  try {
+    for (let i = 0; i < blobs.length; i++) await idb('stems', 'readwrite', s => s.put(blobs[i], stemKey(meta.id, i)));
+    await idb('songs', 'readwrite', s => s.put(meta));
+  } catch (e) { removeFromDb(meta.id).catch(() => {}); throw e; }
+  library.push(meta);
+  library.sort((a, b) => b.createdAt - a.createdAt);
+  renderSongList();
+  return true;
+}
+async function moveHandle(d) {
+  const reply = m => window.opener && window.opener.postMessage(m, MOVE_ORIGIN);
+  if (d.type === 'mwd-move-key') {
+    // Une clé déjà présente dans ce navigateur n'est jamais remplacée.
+    if (typeof d.cle === 'string' && /^\S{1,256}$/.test(d.cle) && !relay.key) setRelay({ key: d.cle, url: '' });
+  } else if (d.type === 'mwd-move-song') {
+    const total = d.total;
+    if (!Number.isInteger(total) || total < 1 || total > MOVE_MAX_SONGS || !Number.isInteger(d.index) || d.index < 0 || d.index >= total) return moveFail('message reçu invalide.');
+    const song = cleanMoveSong(d);
+    if (!song) return moveFail('un morceau reçu est invalide ou trop gros.');
+    moveSay(`Transfert ${d.index + 1}/${total}…`);
+    (await moveStore(song)) ? move.ok++ : move.skipped++;
+    reply({ type: 'mwd-move-ack', index: d.index });
+  } else if (d.type === 'mwd-move-done') {
+    if (!Number.isInteger(d.total) || d.total !== move.ok + move.skipped) return moveFail(`transfert incomplet (${move.ok + move.skipped} morceaux reçus sur ${d.total}).`);
+    move.active = false; moveMode = false;
+    history.replaceState(null, '', location.pathname + location.search + (relay.key ? '#cle=' + encodeURIComponent(relay.key) : ''));
+    moveSay(`Bibliothèque transférée (${move.ok} morceau${move.ok > 1 ? 'x' : ''}${move.skipped ? `, ${move.skipped} déjà présent${move.skipped > 1 ? 's' : ''}` : ''}).`, true);
+    renderPanel();
+  }
+}
+window.addEventListener('message', ev => {
+  // Seule l'ancienne adresse, et seulement la fenêtre qui nous a ouverts.
+  if (!move.active || ev.origin !== MOVE_ORIGIN || !window.opener || ev.source !== window.opener) return;
+  if (!ev.data || typeof ev.data !== 'object') return;
+  clearTimeout(move.timer);
+  move.chain = move.chain.then(() => move.active && moveHandle(ev.data)).catch(moveFail);
+});
+if (move.active) {
+  if (!window.opener) moveFail("le lien avec l'ancienne page est coupé par ce navigateur. Relance le transfert depuis l'ancienne adresse.");
+  else {
+    moveSay("Transfert de la bibliothèque : en attente de l'ancienne page…");
+    try { window.opener.postMessage({ type: 'mwd-move-ready', version: 1 }, MOVE_ORIGIN); } catch (e) {}
+    move.timer = setTimeout(() => moveFail("l'ancienne page ne répond pas (est-elle encore ouverte ?)."), 20000);
+  }
+}
 
 // ---------- Imports : file d'attente, un seul à la fois ----------
 const jobSteps = j => j.server ? SERVER_STEPS : STEPS;
@@ -1648,7 +1780,7 @@ function renderPanel() {
   const body = $('#pBody');
   let html = '';
   if (relay.state === 'checking') html += '<p class="note">Connexion au relais…</p>';
-  else if (relay.state === 'none') html += `<p class="note">${MOBILE ? 'Sur téléphone et tablette, il faut le lien d\'invitation, même pour un fichier' : 'Pour chercher sur YouTube'} : ouvre le lien d'invitation qu'on t'a envoyé, ou colle-le ici. Chaque navigateur le demande une fois.</p>${inviteField()}`;
+  else if (relay.state === 'none') html += `<p class="note">${MOBILE ? 'Sur téléphone et tablette, il faut le lien d\'invitation, même pour un fichier' : 'Pour chercher sur YouTube'} : ouvre le lien d'invitation qu'on t'a envoyé, ou colle ici le lien ou la clé. Chaque navigateur le demande une fois.</p>${inviteField()}`;
   else if (relay.state === 'error') html += `<p class="note err">${esc(relay.error)}</p>${relay.error === MSG.relayDown ? '' : inviteField()}`;
   if (tab === 'search') {
     html += `<div class="field"><input id="q" type="search" placeholder="Artiste, titre…" autocomplete="off" value="${esc(panel.q || '')}"></div>`;
@@ -1662,9 +1794,8 @@ function renderPanel() {
   body.innerHTML = html;
   const inv = $('#invGo');
   if (inv) inv.onclick = () => {
-    const v = parseInvite($('#inv').value);
-    if (!v) { $('#inv').setCustomValidity('Lien non reconnu'); $('#inv').reportValidity(); return; }
-    setRelay(v);
+    const v = parseInvite($('#inv').value, true);
+    if (!v || !setRelay(v, true)) { $('#inv').setCustomValidity('Lien non reconnu'); $('#inv').reportValidity(); return; }
     checkRelay();
   };
   if (tab === 'search') {
@@ -1687,7 +1818,7 @@ function renderPanel() {
   renderResults();
   renderFooter();
 }
-const inviteField = () => `<div class="field"><input id="inv" placeholder="Coller le lien d'invitation"><button class="btn" id="invGo">Valider</button></div>`;
+const inviteField = () => `<div class="field"><input id="inv" placeholder="Coller le lien d'invitation ou la clé"><button class="btn" id="invGo">Valider</button></div>`;
 
 function setNote(text, err) {
   panel.note = text; panel.noteErr = !!err;
@@ -1785,7 +1916,7 @@ async function renderFooter() {
     space = `Espace utilisé : ${mbs(usage)} · disponible : ${mbs(quota - usage)}${quota - usage < 500 * 1048576 ? ' — presque plein' : ''}.`;
   } catch (e) {}
   foot.innerHTML = `
-    ${relay.url ? `<p>Relais configuré · <button class="link" id="forget">Oublier ce relais</button></p>` : ''}
+    ${relay.url ? `<p>Clé enregistrée · <button class="link" id="forget">Oublier la clé</button></p>` : ''}
     ${space ? `<p>${space}</p>` : ''}
     <p>Séparation dans ce navigateur : Demucs htdemucs_6s (Meta, MIT) via ONNX Runtime Web, méthode de kramp/audio-split (MIT). Le modèle (285 Mo) est téléchargé une seule fois.</p>
     <p>Accès au relais protégé par Cloudflare Turnstile : <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">confidentialité de Turnstile</a>.</p>`;
@@ -1822,7 +1953,7 @@ window.addEventListener('beforeunload', e => { if (jobs.some(j => j.state === 'r
     } catch (e) { /* hors-ligne : rien à faire */ }
   }
   document.getElementById('updateReload').onclick = () => {
-    // Adresse inédite pour contourner le cache, en gardant ?serveur et le lien d'invitation (#relais=…) du favori.
+    // Adresse inédite pour contourner le cache, en gardant ?serveur et le lien d'invitation (#cle=…) du favori.
     const u = new URL(location.href);
     u.searchParams.set('v', Date.now());
     location.href = u.href;
