@@ -60,6 +60,15 @@ calculée automatiquement après la séparation, puis corrigeable à la main.
 Possible avec une transcription en notes (`basic-pitch` de Spotify, `YourMT3+`) puis un algorithme qui
 choisit corde et case ; résultat approximatif, utile comme brouillon seulement.
 
+**Export MIDI des pistes séparées** (demandé le 11 nov. 2026, pour plus tard) : chaque piste → fichier
+`.mid` (ou un seul fichier multipiste, une piste MIDI par instrument).
+- Basse, chant, guitare, piano, « autre » : `basic-pitch` (Spotify, Apache 2.0, polyphonique ; existe
+  aussi en TypeScript `@spotify/basic-pitch`, utilisable dans le navigateur), ou `YourMT3+` côté serveur.
+- Batterie : transcription dédiée (ex. ADTOF), notes General MIDI (grosse caisse, caisse claire, charleston…).
+- Tempo du morceau (`beat_this`) écrit dans le fichier pour que le MIDI tombe sur la grille du séquenceur.
+- Qualité : bonne pour basse et chant, correcte pour piano, approximative pour guitare saturée et
+  mélanges denses ; à présenter comme point de départ à retoucher dans un séquenceur.
+
 Technique : **Python, pas JavaScript** (les modèles et bibliothèques sont en Python, comme le séparateur
 Demucs). Un service « analyseur » sur le même modèle que `separateur` : file d'attente, un morceau à la
 fois, sur processeur. La VM suffit : quelques minutes de calcul par morceau (Whisper en int8 sur
