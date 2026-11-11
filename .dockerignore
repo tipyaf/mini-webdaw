@@ -1,0 +1,4 @@
+# Tout exclure, sauf ce que le Dockerfile copie.
+*
+!index.html
+!nginx.conf

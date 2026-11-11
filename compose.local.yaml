@@ -1,0 +1,54 @@
+# Pile de test locale, même origine que la production : http://localhost:8765/
+#   /      → front (même image et même nginx.conf qu'en production)
+#   /api/* → relais lancé à part sur le Mac (dépôt mini-webdaw-relais : `docker compose up -d`, port 127.0.0.1:8787)
+# Le proxy joue le rôle de Traefik. http://localhost:8765 figure déjà dans les origines autorisées du relais local.
+#   docker compose -f compose.local.yaml up -d --build
+name: mini-webdaw-local
+
+services:
+  front:
+    build: .
+    image: mini-webdaw-front:local
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m
+      - /var/cache/nginx:size=1m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
+    depends_on: [front]
+    ports:
+      - "127.0.0.1:8765:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Pas de read_only ici : compose copie la config « content » dans le conteneur au démarrage.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    configs:
+      - source: proxy
+        target: /etc/nginx/conf.d/default.conf
+
+configs:
+  proxy:
+    content: |
+      server {
+          listen 8080;
+          server_tokens off;
+          # Séparation serveur : envoi d'un fichier audio jusqu'à 100 Mo, réponses longues.
+          client_max_body_size 110m;
+          proxy_read_timeout 600s;
+          proxy_buffering off;
+          proxy_request_buffering off;
+          location /api/ {
+              proxy_pass http://host.docker.internal:8787;
+              proxy_http_version 1.1;
+              proxy_set_header Host $$host;
+          }
+          location / {
+              proxy_pass http://front:8080;
+              proxy_set_header Host $$host;
+          }
+      }

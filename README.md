@@ -14,7 +14,26 @@ Les fichiers audio restent sur l'appareil : rien n'est envoyé au serveur.
 
 Documentation complète : [DOC.md](DOC.md).
 
-## Déploiement
+## Déploiement Oracle
+
+Adresse cible : https://mini-webdaw.yalab.duckdns.org (relais sur la même origine, sous `/api`).
+
+- `Dockerfile` + `nginx.conf` : nginx non root qui ne sert que `index.html` (404 pour tout le reste),
+  `Cache-Control: no-cache` + ETag, en-têtes de sécurité, CSP en Report-Only pendant la phase 1.
+- `compose.dokploy.yaml` : service `front` déployé par Dokploy (projet « mini-webdaw », service Compose)
+  derrière son Traefik ; chaque push sur la branche suivie (`phase1`, puis `main` au basculement)
+  redéploie via le webhook GitHub. `/api/*` est routé vers le relais par le compose du dépôt
+  `mini-webdaw-relais` (router prioritaire). Aucun secret dans ce dépôt.
+- Test local, même origine que la production : lancer le relais (`docker compose up -d` dans
+  `mini-webdaw-relais`, port 8787), puis
+
+  ```bash
+  docker compose -f compose.local.yaml up -d --build
+  ```
+
+  → http://localhost:8765/ (front + proxy `/api` vers le relais local).
+
+## Déploiement GitHub Pages
 
 GitHub Pages publie la branche `main` (racine) : chaque push sur `main` met la page à jour (~1 min).
 

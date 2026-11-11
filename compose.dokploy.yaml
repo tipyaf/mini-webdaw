@@ -1,0 +1,40 @@
+# Production sur la VM Oracle Cloud (ARM64), déployée par Dokploy : front statique (nginx) de mini webdaw.
+# HTTPS et routage par le Traefik de Dokploy (réseau dokploy-network) : aucun port publié ici.
+# https://mini-webdaw.yalab.duckdns.org/      → ce service (index.html seul, 404 pour le reste)
+# https://mini-webdaw.yalab.duckdns.org/api/* → relais (dépôt mini-webdaw-relais, router prioritaire)
+# Déployée automatiquement à chaque push sur la branche suivie par Dokploy (webhook GitHub). Aucun secret.
+name: mini-webdaw
+
+services:
+  front:
+    build: .
+    image: mini-webdaw-front:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m
+      - /var/cache/nginx:size=1m
+    networks: [dokploy-network]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 64m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # HTTPS (certificat Let's Encrypt automatique, résolveur « letsencrypt » de Dokploy).
+      # /api/* part au relais : son router a priority=100, celui-ci la priorité par défaut (longueur de la règle).
+      - traefik.http.routers.webdaw-front.rule=Host(`mini-webdaw.yalab.duckdns.org`)
+      - traefik.http.routers.webdaw-front.entrypoints=websecure
+      - traefik.http.routers.webdaw-front.tls.certresolver=letsencrypt
+      - traefik.http.routers.webdaw-front.service=webdaw-front
+      # HTTP : simple redirection vers HTTPS
+      - traefik.http.routers.webdaw-front-http.rule=Host(`mini-webdaw.yalab.duckdns.org`)
+      - traefik.http.routers.webdaw-front-http.entrypoints=web
+      - traefik.http.routers.webdaw-front-http.middlewares=redirect-to-https@file
+      - traefik.http.routers.webdaw-front-http.service=webdaw-front
+      - traefik.http.services.webdaw-front.loadbalancer.server.port=8080
+
+networks:
+  dokploy-network:
+    external: true
