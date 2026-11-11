@@ -77,7 +77,7 @@ Playwright Firefox (code 600010) : le parcours Firefox complet a été fait sur 
 | 2.2–2.6 lecture, mute, solo, boucle, transposition, limiteur | ✅ | ✅ (lecture, mute, transposition) | ✅ (lecture) | ✅ (lecture) | – |
 | 3.1 recherche | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 3.2 aperçu YouTube | ✅ | – | – | – | – |
-| 3.3 import YouTube | ✅ navigateur | ✅ serveur | ✅ serveur | ✅ navigateur (WebGPU) | voir anomalie A1 |
+| 3.3 import YouTube | ✅ navigateur | ✅ serveur | ✅ serveur | ✅ navigateur (WebGPU) | ✅ séparation + rangement (6 pistes) ; lecture non testable (A1) |
 | 3.5 import fichier | ✅ navigateur | – | – | – | – |
 | 3.6 `?serveur` (fichier) | ✅ | – | – | – | – |
 | 4.1 bibliothèque après rechargement | ✅ | ✅ | – | ✅ | – |
@@ -95,7 +95,8 @@ Non testé par Claude : Android (aucun émulateur), vrai Safari Mac et vrai Fire
 
 | # | Plateforme | Étape | Ce qui se passe | Capture |
 |---|-----------|-------|-----------------|---------|
-| A1 | WebKit Mac (Playwright) | 3.3 | Séparation serveur OK, mais rangement bloqué à 90 %. Cause trouvée pour la session éphémère : WebKit y refuse de ranger un fichier dans IndexedDB (comme Safari en navigation privée) ; avec un profil normal, la sonde IndexedDB passe. Un essai avec profil normal est resté figé ; nouvel essai impossible ce soir (limite horaire de séparations du relais atteinte par les tests). Même comportement sur GitHub Pages : pas une régression. **À vérifier à la main sur le vrai Safari Mac.** | — |
+| A1 | WebKit Mac (Playwright) | 3.3 | Relancé à 23 h avec un profil normal : séparation serveur et rangement des 6 pistes OK (« YouTube · 2:43 » dans la bibliothèque). L'ouverture échoue (« Decoding failed ») parce que le WebKit de Playwright ne décode pas l'AAC (vérifié sur un AAC de 2 s ; le MP3 passe) ; le vrai Safari le décode (mêmes pistes lues sur iPad et iPhone). Limite de l'outil, pas de l'app. Lecture sur le vrai Safari Mac : contrôle manuel conseillé (2 min). | — |
+| A1b | Safari, navigation privée | 3.3 | En session éphémère, WebKit refuse de ranger un fichier dans IndexedDB : l'import reste bloqué à 90 % sans message. Même chose sur GitHub Pages (pas une régression). À traiter plus tard : message clair « navigation privée non prise en charge ». | — |
 | A2 | Chrome, tous | 1.3 | Coller un nouveau lien dans la barre d'adresse d'un onglet déjà ouvert ne l'applique qu'après rechargement (déjà le cas avant). | — |
 | A3 | iPhone | 3.1 | Le zoom reste agrandi après la saisie dans le champ de recherche (police < 16 px) ; graduations de la frise serrées. Déjà le cas avant. | — |
 | A4 | iPad, iPhone | panneau | Le pied du panneau dit « Séparation dans ce navigateur » alors que la séparation se fait sur le serveur. Déjà le cas avant. | — |
