@@ -59,8 +59,43 @@ La bibliothèque de l'ancienne adresse n'est jamais effacée : en cas d'échec, 
 | 5.1 | Sur `tipyaf.github.io/mini-webdaw`, bouton du bandeau « déménage » | nouvelle adresse ouverte, « Transfert n/N », puis « Bibliothèque transférée » | | | | | | |
 | 5.2 | Sur la nouvelle adresse | morceaux transférés lisibles, clé reprise (pas de lien à recoller) | | | | | | |
 
+## Résultats de la recette faite par Claude (11 nov. 2026, branche `phase1`, commit 45ab2ae)
+
+Moyens : Chrome Mac (Claude in Chrome), simulateurs iPad Pro 13 et iPhone 18 Pro (vrai Safari iOS),
+Playwright Firefox et WebKit (moteur de Safari Mac). Turnstile refuse les navigateurs pilotés par
+Playwright Firefox (code 600010) : le parcours Firefox complet a été fait sur la pile locale
+`compose.local.yaml` (même image du front, relais local sans Turnstile).
+
+| Étape | CH | IP | IH | FF (local) | WebKit Mac |
+|-------|----|----|----|------------|------------|
+| 1.1 lien `#cle=` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 1.2 rechargement | ✅ | ✅ | – | ✅ | – |
+| 1.3 ancien lien réécrit | ✅ | – | – | ✅ | ✅ |
+| 1.4 sans clé + clé nue collée | ✅ | – | – | – | – |
+| 1.5 oublier la clé | ✅ | – | – | – | – |
+| 2.1 dossier mp3 | ✅ | – | – | – | – |
+| 2.2–2.6 lecture, mute, solo, boucle, transposition, limiteur | ✅ | ✅ (lecture, mute, transposition) | ✅ (lecture) | ✅ (lecture) | – |
+| 3.1 recherche | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 3.2 aperçu YouTube | ✅ | – | – | – | – |
+| 3.3 import YouTube | ✅ navigateur | ✅ serveur | ✅ serveur | ✅ navigateur (WebGPU) | voir anomalie A1 |
+| 3.5 import fichier | ✅ navigateur | – | – | – | – |
+| 3.6 `?serveur` (fichier) | ✅ | – | – | – | – |
+| 4.1 bibliothèque après rechargement | ✅ | ✅ | – | ✅ | – |
+| 4.2 suppression | ✅ | – | – | – | – |
+| 4.3 bannière « Recharger » | ✅ | ✅ | – | – | – |
+| Console | aucune erreur | – | – | aucune erreur | – |
+
+Corrigé pendant la recette : durée « 0:00 » d'un fichier séparé sur le serveur (défaut déjà présent
+sur GitHub Pages) → commit 45ab2ae.
+
+Non testé par Claude : Android (aucun émulateur), vrai Safari Mac et vrai Firefox avec Turnstile
+(impossible à piloter), bloc 5 (transfert, seulement au basculement).
+
 ## Anomalies
 
 | # | Plateforme | Étape | Ce qui se passe | Capture |
 |---|-----------|-------|-----------------|---------|
-| | | | | |
+| A1 | WebKit Mac (Playwright) | 3.3 | Séparation serveur OK, mais rangement bloqué à 90 %. Cause trouvée pour la session éphémère : WebKit y refuse de ranger un fichier dans IndexedDB (comme Safari en navigation privée) ; avec un profil normal, la sonde IndexedDB passe. Un essai avec profil normal est resté figé ; nouvel essai impossible ce soir (limite horaire de séparations du relais atteinte par les tests). Même comportement sur GitHub Pages : pas une régression. **À vérifier à la main sur le vrai Safari Mac.** | — |
+| A2 | Chrome, tous | 1.3 | Coller un nouveau lien dans la barre d'adresse d'un onglet déjà ouvert ne l'applique qu'après rechargement (déjà le cas avant). | — |
+| A3 | iPhone | 3.1 | Le zoom reste agrandi après la saisie dans le champ de recherche (police < 16 px) ; graduations de la frise serrées. Déjà le cas avant. | — |
+| A4 | iPad, iPhone | panneau | Le pied du panneau dit « Séparation dans ce navigateur » alors que la séparation se fait sur le serveur. Déjà le cas avant. | — |
