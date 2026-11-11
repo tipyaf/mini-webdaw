@@ -1710,14 +1710,29 @@ async function separateOnServer(job, upd) {
     } else if (s.state === 'done') break;
     else if (s.state === 'error') throw new Error(s.message || 'La séparation sur le serveur a échoué.');
     await new Promise(r => setTimeout(r, 2000));
-    s = await (await relayCall('/separate/' + sid, { signal })).json();
+    s = await patiently(async () => (await relayCall('/separate/' + sid, { signal })).json());
   }
   job.title = job.title || s.title || 'Morceau';
   job.duration = job.duration || Math.round(s.duration || (job.file ? await fileDuration(job.file) : 0));
   return s.stems.map((st, i) => async () => {
-    const res = await relayCall(`/separate/${sid}/stems/${i}`, { signal });
-    return { name: st.name, blob: await res.blob(), ext: 'm4a', rmsDb: st.rmsDb };
+    const blob = await patiently(async () => (await relayCall(`/separate/${sid}/stems/${i}`, { signal })).blob());
+    return { name: st.name, blob, ext: 'm4a', rmsDb: st.rmsDb };
   });
+}
+
+// Une séparation sur le serveur dure plusieurs minutes : une coupure réseau passagère (4G, mise en veille, connexion
+// perdue) ne doit pas la faire échouer, ni l'annuler sur le serveur. On réessaie pendant 90 s, sauf si l'utilisateur
+// a annulé ou si le relais répond une vraie erreur (séparation inconnue, refus…).
+async function patiently(call) {
+  const t0 = Date.now();
+  for (let wait = 1000; ; wait = Math.min(wait * 2, 8000)) {
+    try { return await call(); }
+    catch (e) {
+      const passing = !(e instanceof RelayError) || e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504;
+      if (e.name === 'AbortError' || !passing || Date.now() - t0 > 90000) throw e;
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
 }
 
 // Durée d'un fichier lue dans ses métadonnées, sans le décoder (léger sur téléphone). 0 si inconnue.
