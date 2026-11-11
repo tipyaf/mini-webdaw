@@ -1713,10 +1713,23 @@ async function separateOnServer(job, upd) {
     s = await (await relayCall('/separate/' + sid, { signal })).json();
   }
   job.title = job.title || s.title || 'Morceau';
-  job.duration = job.duration || Math.round(s.duration || 0);
+  job.duration = job.duration || Math.round(s.duration || (job.file ? await fileDuration(job.file) : 0));
   return s.stems.map((st, i) => async () => {
     const res = await relayCall(`/separate/${sid}/stems/${i}`, { signal });
     return { name: st.name, blob: await res.blob(), ext: 'm4a', rmsDb: st.rmsDb };
+  });
+}
+
+// Durée d'un fichier lue dans ses métadonnées, sans le décoder (léger sur téléphone). 0 si inconnue.
+function fileDuration(file) {
+  return new Promise(resolve => {
+    const a = new Audio(), url = URL.createObjectURL(file);
+    const done = d => { URL.revokeObjectURL(url); resolve(Number.isFinite(d) ? d : 0); };
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => done(a.duration);
+    a.onerror = () => done(0);
+    setTimeout(() => done(0), 5000);
+    a.src = url;
   });
 }
 
