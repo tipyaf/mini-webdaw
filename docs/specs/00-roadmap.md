@@ -1,6 +1,8 @@
 # Roadmap — mini webdaw sur Oracle
 
 Consigné le 11 nov. 2026. Specs : `01-phase1-migration.md`, `02-phase2-vision.md`, `03-tests.md`.
+Refonte du front (étude validée, développement à lancer après la phase 1) : `05-redesign-scene-v2.md`,
+`06-handoff-redesign.md`, `../design/multipiste-scene-v2.html`.
 Dépôt public : aucun secret dans ce dossier.
 
 **En cours : phase 1 seulement.** La phase 2 (comptes, base de données, projets partagés…) est mise de
