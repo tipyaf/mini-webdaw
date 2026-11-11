@@ -14,7 +14,15 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   button { font: inherit; color: inherit; cursor: pointer; }
-  .app { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+  body { display: flex; flex-direction: column; }
+  .app { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto 1fr; flex: 1; min-height: 0; }
+  .move-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 20px;
+    background: var(--accent); color: #1b1404; font-size: 13px; }
+  .move-banner b { font-weight: 700; }
+  .move-banner button { background: #1b1404; color: var(--accent); border: 0; border-radius: 6px; padding: 6px 12px; font-weight: 600; }
+  .move-banner button:disabled { opacity: .6; cursor: default; }
+  .move-banner #moveStatus { font-weight: 600; }
+  .move-banner #moveStatus.err { color: #7a0010; }
   header { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px;
     padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
@@ -162,6 +170,11 @@
 </style>
 </head>
 <body>
+<div class="move-banner" id="moveBanner">
+  <b>mini webdaw déménage</b>
+  <button id="moveBtn">Ouvrir la nouvelle adresse et y transférer ma bibliothèque</button>
+  <span id="moveStatus" role="status"></span>
+</div>
 <div class="app">
   <header>
     <h1>mini webdaw</h1>
@@ -1832,6 +1845,82 @@ window.addEventListener('beforeunload', e => { if (jobs.some(j => j.state === 'r
     setInterval(checkForUpdate, 5 * 60 * 1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
   }
+})();
+
+// ---------- Déménagement : émetteur du transfert de bibliothèque (protocole B3) ----------
+// La bibliothèque locale n'est jamais modifiée ni effacée : on ne fait que la lire.
+(function () {
+  const NEW_ORIGIN = 'https://mini-webdaw.yalab.duckdns.org';
+  // Origine de destination configurable uniquement en localhost (tests) : ?dest=http://localhost:8001
+  let dest = NEW_ORIGIN;
+  if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
+    const d = new URLSearchParams(location.search).get('dest');
+    if (d && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(d)) dest = d;
+  }
+  const btn = document.getElementById('moveBtn'), st = document.getElementById('moveStatus');
+  const say = (t, err) => { st.textContent = t; st.className = err ? 'err' : ''; };
+  const ACK_TIMEOUT = 5 * 60 * 1000;   // un gros morceau peut mettre du temps à s'écrire
+  let busy = false;
+
+  const currentKey = () => relay.key || '';
+  const keyHash = k => k ? '#cle=' + encodeURIComponent(k) : '';
+
+  function waitMsg(win, match, ms, what) {
+    return new Promise((ok, ko) => {
+      const t = setTimeout(() => { cleanup(); ko(new Error(what)); }, ms);
+      const iv = setInterval(() => { if (win.closed) { cleanup(); ko(new Error('La fenêtre de la nouvelle adresse a été fermée.')); } }, 500);
+      function on(e) {
+        if (e.origin !== dest || e.source !== win) return;
+        const d = e.data;
+        if (d && typeof d === 'object' && match(d)) { cleanup(); ok(d); }
+      }
+      function cleanup() { clearTimeout(t); clearInterval(iv); removeEventListener('message', on); }
+      addEventListener('message', on);
+    });
+  }
+
+  async function move() {
+    if (busy) return;
+    busy = true; btn.disabled = true;
+    try {
+      let metas = [];
+      try { metas = await idb('songs', 'readonly', s => s.getAll()); } catch (e) { console.warn('Bibliothèque illisible', e); }
+      metas.sort((a, b) => a.createdAt - b.createdAt);
+      const key = currentKey();
+      if (!metas.length) {
+        say('Bibliothèque vide : ouverture de la nouvelle adresse…');
+        location.href = dest + '/' + keyHash(key);
+        return;
+      }
+      // Ouvert dans le geste du clic, sans noopener : la nouvelle page a besoin de window.opener.
+      const win = window.open(dest + '/#demenagement', '_blank');
+      if (!win) throw new Error('Le navigateur a bloqué l’ouverture de la nouvelle fenêtre. Autorise les fenêtres pour ce site puis réessaie.');
+      say('Ouverture de la nouvelle adresse…');
+      await waitMsg(win, d => d.type === 'mwd-move-ready', 30000,
+        'La nouvelle adresse ne répond pas. Ta bibliothèque est intacte ici ; réessaie, ou ouvre la nouvelle adresse à la main.');
+      if (key) win.postMessage({ type: 'mwd-move-key', cle: key }, dest);
+      const total = metas.length;
+      for (let i = 0; i < total; i++) {
+        const meta = metas[i];
+        say(`Transfert ${i + 1}/${total}… ${meta.title || meta.name || ''}`.trim());
+        const tracks = [];
+        for (let j = 0; j < meta.stems.length; j++) {
+          const blob = await idb('stems', 'readonly', s => s.get(stemKey(meta.id, j)));
+          if (!blob) throw new Error('Piste manquante dans la bibliothèque : ' + meta.stems[j].name);
+          tracks.push({ name: meta.stems[j].name, blob });
+        }
+        const ack = waitMsg(win, d => d.type === 'mwd-move-ack' && d.index === i, ACK_TIMEOUT,
+          `Pas de confirmation de la nouvelle adresse pour le morceau ${i + 1}/${total}.`);
+        win.postMessage({ type: 'mwd-move-song', index: i, total, meta, tracks }, dest);
+        await ack;
+      }
+      win.postMessage({ type: 'mwd-move-done', total }, dest);
+      say(`Bibliothèque transférée (${total} morceau${total > 1 ? 'x' : ''}). Elle reste aussi ici.`);
+    } catch (e) {
+      say('Échec du transfert : ' + e.message + ' Ta bibliothèque ici n’a pas été touchée.', true);
+    } finally { busy = false; btn.disabled = false; }
+  }
+  btn.onclick = move;
 })();
 </script>
 </body>
